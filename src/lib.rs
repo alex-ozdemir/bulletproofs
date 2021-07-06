@@ -4,9 +4,10 @@ use rand::Rng;
 
 pub type FiatShamirRng = ark_marlin::rng::FiatShamirRng<blake2::Blake2s>;
 
-pub mod iter_bp;
 pub mod send;
 pub mod util;
+pub mod iter_bp;
+pub mod rec_bp;
 
 use util::msm;
 
@@ -81,7 +82,7 @@ impl<F: Field> IpaWitness<F> {
     }
 }
 
-trait Ipa<G: Group> {
+pub trait Ipa<G: Group> {
     type Proof;
     fn prove(
         instance: &IpaInstance<G>,
@@ -104,7 +105,7 @@ trait Ipa<G: Group> {
 
 #[cfg(test)]
 mod test {
-    use super::{iter_bp, send, FiatShamirRng, Ipa, IpaInstance};
+    use super::{iter_bp, send, FiatShamirRng, Ipa, IpaInstance, rec_bp};
     use ark_bls12_381::Bls12_381;
     use ark_ec::{group::Group, PairingEngine};
     use rand::Rng;
@@ -136,5 +137,11 @@ mod test {
     fn test_bp_ipa() {
         type G = <Bls12_381 as PairingEngine>::G1Projective;
         test_ipa::<G, iter_bp::Bp<G>>(vec![1, 2, 4, 8, 16], 3);
+    }
+
+    #[test]
+    fn test_rec_bp_ipa() {
+        type G = <Bls12_381 as PairingEngine>::G1Projective;
+        test_ipa::<G, rec_bp::Bp<G, send::SendIpa<G>>>(vec![1, 2, 4, 8], 3);
     }
 }
