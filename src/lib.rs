@@ -8,6 +8,7 @@ pub mod send;
 pub mod util;
 pub mod iter_bp;
 pub mod rec_bp;
+pub mod msm;
 
 use util::msm;
 
