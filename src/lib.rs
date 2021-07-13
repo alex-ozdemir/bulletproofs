@@ -9,6 +9,7 @@ pub mod util;
 pub mod iter_bp;
 pub mod rec_bp;
 pub mod msm;
+pub mod r1cs;
 
 use util::msm;
 
