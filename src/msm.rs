@@ -138,7 +138,7 @@ mod test {
     use ark_relations::r1cs::{ConstraintLayer, OptimizationGoal, TracingMode};
     use tracing_subscriber::layer::SubscriberExt;
 
-    fn msm_test<P: TEModelParameters>(len: usize)
+    fn fs_msm_test<P: TEModelParameters>(len: usize)
     where
         P::BaseField: PrimeField,
     {
@@ -183,12 +183,12 @@ mod test {
     }
 
     #[test]
-    fn jubjub() {
-        msm_test::<ark_ed_on_bls12_381::EdwardsParameters>(1);
-        msm_test::<ark_ed_on_bls12_381::EdwardsParameters>(10);
-        msm_test::<ark_ed_on_bls12_381::EdwardsParameters>(100);
-        msm_test::<ark_ed_on_bls12_381::EdwardsParameters>(1000);
-        msm_test::<ark_ed_on_bls12_381::EdwardsParameters>(5000);
+    fn fs_jubjub() {
+        fs_msm_test::<ark_ed_on_bls12_381::EdwardsParameters>(1);
+        fs_msm_test::<ark_ed_on_bls12_381::EdwardsParameters>(10);
+        fs_msm_test::<ark_ed_on_bls12_381::EdwardsParameters>(100);
+        fs_msm_test::<ark_ed_on_bls12_381::EdwardsParameters>(1000);
+        fs_msm_test::<ark_ed_on_bls12_381::EdwardsParameters>(5000);
     }
 
     fn fb_msm_test<P: TEModelParameters>(m: usize) -> usize
