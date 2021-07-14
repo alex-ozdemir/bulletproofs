@@ -1,6 +1,6 @@
+use crate::{FiatShamirRng, Ipa, IpaInstance, IpaWitness};
 use ark_ec::group::Group;
 use std::marker::PhantomData;
-use crate::{IpaWitness, IpaInstance, Ipa, FiatShamirRng};
 
 pub struct SendIpa<G>(PhantomData<G>);
 
@@ -14,6 +14,7 @@ impl<G: Group> Ipa<G> for SendIpa<G> {
     type Proof = IpaWitness<G::ScalarField>;
 
     fn prove(
+        &self,
         _instance: &IpaInstance<G>,
         witness: &IpaWitness<G::ScalarField>,
         _fs: &mut FiatShamirRng,
@@ -21,7 +22,12 @@ impl<G: Group> Ipa<G> for SendIpa<G> {
         witness.clone()
     }
 
-    fn check(instance: &IpaInstance<G>, proof: &Self::Proof, _fs: &mut FiatShamirRng) -> bool {
-        Self::check_witness(&instance, &proof)
+    fn check(
+        &self,
+        instance: &IpaInstance<G>,
+        proof: &Self::Proof,
+        _fs: &mut FiatShamirRng,
+    ) -> bool {
+        self.check_witness(&instance, &proof)
     }
 }

@@ -6,11 +6,11 @@ use ark_ec::group::Group;
 use ark_ff::{Field, UniformRand};
 use std::marker::PhantomData;
 
-pub struct Bp<G, B>(PhantomData<(G, B)>);
+pub struct Bp<G, B>(PhantomData<G>, B);
 
-impl<G, B> std::default::Default for Bp<G, B> {
-    fn default() -> Self {
-        Self(Default::default())
+impl<G, B> Bp<G, B> {
+    pub fn new(b: B) -> Self {
+        Self(Default::default(), b)
     }
 }
 
@@ -18,12 +18,13 @@ impl<G: Group, B: Ipa<G>> Ipa<G> for Bp<G, B> {
     type Proof = BpProof<G, B>;
 
     fn prove(
+        &self,
         instance: &IpaInstance<G>,
         witness: &IpaWitness<G::ScalarField>,
         fs: &mut FiatShamirRng,
     ) -> Self::Proof {
         if instance.gens.vec_size == 1 {
-            BpProof::Base(B::prove(instance, witness, fs))
+            BpProof::Base(self.1.prove(instance, witness, fs))
         } else {
             let a = witness.a.clone();
             let b = witness.b.clone();
@@ -83,14 +84,14 @@ impl<G: Group, B: Ipa<G>> Ipa<G> for Bp<G, B> {
                 },
                 result: p_next,
             };
-            let rec_proof = Self::prove(&instance_next, &wit_next, fs);
+            let rec_proof = self.prove(&instance_next, &wit_next, fs);
             BpProof::Rec(l, r, Box::new(rec_proof))
         }
     }
 
-    fn check(instance: &IpaInstance<G>, proof: &Self::Proof, fs: &mut FiatShamirRng) -> bool {
+    fn check(&self, instance: &IpaInstance<G>, proof: &Self::Proof, fs: &mut FiatShamirRng) -> bool {
         match proof {
-            BpProof::Base(base_proof) => B::check(instance, base_proof, fs),
+            BpProof::Base(base_proof) => self.1.check(instance, base_proof, fs),
             BpProof::Rec(l, r, inner_proof) => {
                 fs.absorb(l);
                 fs.absorb(r);
@@ -119,7 +120,7 @@ impl<G: Group, B: Ipa<G>> Ipa<G> for Bp<G, B> {
                     },
                     result: p_next,
                 };
-                Self::check(&instance_next, inner_proof, fs)
+                self.check(&instance_next, inner_proof, fs)
             }
         }
     }

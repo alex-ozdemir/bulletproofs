@@ -4,13 +4,13 @@ use rand::Rng;
 
 pub type FiatShamirRng = ark_marlin::rng::FiatShamirRng<blake2::Blake2s>;
 
-pub mod send;
-pub mod util;
 pub mod iter_bp;
-pub mod rec_bp;
+pub mod k_bp;
 pub mod msm;
 pub mod r1cs;
-
+pub mod rec_bp;
+pub mod send;
+pub mod util;
 use util::msm;
 
 #[derive(Clone)]
@@ -87,12 +87,18 @@ impl<F: Field> IpaWitness<F> {
 pub trait Ipa<G: Group> {
     type Proof;
     fn prove(
+        &self,
         instance: &IpaInstance<G>,
         witness: &IpaWitness<G::ScalarField>,
         fs: &mut FiatShamirRng,
     ) -> Self::Proof;
-    fn check(instance: &IpaInstance<G>, proof: &Self::Proof, fs: &mut FiatShamirRng) -> bool;
-    fn check_witness(instance: &IpaInstance<G>, witness: &IpaWitness<G::ScalarField>) -> bool {
+    fn check(&self, instance: &IpaInstance<G>, proof: &Self::Proof, fs: &mut FiatShamirRng)
+        -> bool;
+    fn check_witness(
+        &self,
+        instance: &IpaInstance<G>,
+        witness: &IpaWitness<G::ScalarField>,
+    ) -> bool {
         let ip = witness.ip();
         assert_eq!(instance.gens.vec_size, instance.gens.a_gens.len());
         assert_eq!(instance.gens.vec_size, instance.gens.b_gens.len());
@@ -107,24 +113,24 @@ pub trait Ipa<G: Group> {
 
 #[cfg(test)]
 mod test {
-    use super::{iter_bp, send, FiatShamirRng, Ipa, IpaInstance, rec_bp};
+    use super::{iter_bp, rec_bp, send, FiatShamirRng, Ipa, IpaInstance, k_bp};
     use ark_bls12_381::Bls12_381;
     use ark_ec::{group::Group, PairingEngine};
     use rand::Rng;
-    fn test_ipa<G: Group, I: Ipa<G>>(sizes: Vec<usize>, reps: usize) {
+    fn test_ipa<G: Group, I: Ipa<G>>(sizes: Vec<usize>, reps: usize, i: I) {
         let rng = &mut ark_std::test_rng();
         for size in sizes {
             for _ in 0..reps {
                 let (mut instance, witness) = IpaInstance::<G>::sample_from_length(rng, size);
-                assert!(I::check_witness(&instance, &witness));
+                assert!(i.check_witness(&instance, &witness));
                 let fs_seed: [u8; 32] = rng.gen();
                 let mut fs_rng = FiatShamirRng::from_seed(&fs_seed);
-                let proof = I::prove(&instance, &witness, &mut fs_rng);
+                let proof = i.prove(&instance, &witness, &mut fs_rng);
                 let mut fs_rng = FiatShamirRng::from_seed(&fs_seed);
-                assert!(I::check(&instance, &proof, &mut fs_rng));
+                assert!(i.check(&instance, &proof, &mut fs_rng));
                 instance.tweak();
                 let mut fs_rng = FiatShamirRng::from_seed(&fs_seed);
-                assert!(!I::check(&instance, &proof, &mut fs_rng));
+                assert!(!i.check(&instance, &proof, &mut fs_rng));
             }
         }
     }
@@ -132,18 +138,33 @@ mod test {
     #[test]
     fn test_send_ipa() {
         type G = <Bls12_381 as PairingEngine>::G1Projective;
-        test_ipa::<G, send::SendIpa<G>>(vec![1, 2, 3, 4, 8, 9, 15], 1);
+        let i = send::SendIpa::<G>::default();
+        test_ipa(vec![1, 2, 3, 4, 8, 9, 15], 1, i);
     }
 
     #[test]
     fn test_bp_ipa() {
         type G = <Bls12_381 as PairingEngine>::G1Projective;
-        test_ipa::<G, iter_bp::Bp<G>>(vec![1, 2, 4, 8, 16], 3);
+        let i = iter_bp::Bp::<G>::default();
+        test_ipa(vec![1, 2, 4, 8, 16], 1, i);
     }
 
     #[test]
     fn test_rec_bp_ipa() {
         type G = <Bls12_381 as PairingEngine>::G1Projective;
-        test_ipa::<G, rec_bp::Bp<G, send::SendIpa<G>>>(vec![1, 2, 4, 8], 3);
+        let base = send::SendIpa::<G>::default();
+        let i = rec_bp::Bp::<G, send::SendIpa<G>>::new(base);
+        test_ipa(vec![1, 2, 4, 8], 3, i);
+    }
+
+    #[test]
+    fn test_kary_bp_ipa() {
+        for k in vec![2, 3, 4] {
+            dbg!(&k);
+            type G = <Bls12_381 as PairingEngine>::G1Projective;
+            let base = send::SendIpa::<G>::default();
+            let i = k_bp::KaryBp::<G, send::SendIpa<G>>::new(k, base);
+            test_ipa(vec![1, 2, 4, 8], 1, i);
+        }
     }
 }

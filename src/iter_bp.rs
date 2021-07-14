@@ -33,6 +33,7 @@ impl<G: Group> Ipa<G> for Bp<G> {
     type Proof = BpProof<G>;
 
     fn prove(
+        &self,
         instance: &IpaInstance<G>,
         witness: &IpaWitness<G::ScalarField>,
         fs: &mut FiatShamirRng,
@@ -105,7 +106,7 @@ impl<G: Group> Ipa<G> for Bp<G> {
         }
     }
 
-    fn check(instance: &IpaInstance<G>, proof: &Self::Proof, fs: &mut FiatShamirRng) -> bool {
+    fn check(&self, instance: &IpaInstance<G>, proof: &Self::Proof, fs: &mut FiatShamirRng) -> bool {
         assert!(instance.gens.vec_size.is_power_of_two());
         let mut challenges: Vec<G::ScalarField> = Vec::new();
         for i in 0..proof.ls.len() {
