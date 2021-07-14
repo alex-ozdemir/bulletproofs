@@ -35,22 +35,28 @@ where
     P::BaseField: PrimeField,
 {
     let t = start_timer!(|| "msm");
-    assert!(points.len() > 0);
-    let chain = timed!(|| "build_chain", build_chain(scalars.clone()));
-    // ~quadratic time..
-    //timed!(|| "check chain", check_chain(&chain, &scalars));
-    println!(
-        "Additions per element: {}",
-        chain.adds.len() as f64 / scalars.len() as f64
-    );
-    timed!(|| "embed chain", {
-        for (a, b) in &chain.adds {
-            let new = points[*a].clone() + points[*b].clone();
-            points.push(new);
-        }
-    });
+    // special-case zero
+    let r = if points.len() == 0 {
+        let zero = GroupAffine::<P>::zero();
+        AffineVar::new(FpVar::Constant(zero.x), FpVar::Constant(zero.y))
+    } else {
+        let chain = timed!(|| "build_chain", build_chain(scalars.clone()));
+        // ~quadratic time..
+        //timed!(|| "check chain", check_chain(&chain, &scalars));
+        println!(
+            "Additions per element: {}",
+            chain.adds.len() as f64 / scalars.len() as f64
+        );
+        timed!(|| "embed chain", {
+            for (a, b) in &chain.adds {
+                let new = points[*a].clone() + points[*b].clone();
+                points.push(new);
+            }
+        });
+        points.pop().unwrap()
+    };
     end_timer!(t);
-    points.pop().unwrap()
+    r
 }
 
 pub struct KnownScalarMsm<P: TEModelParameters> {
@@ -127,9 +133,7 @@ fn compute_point_powers<P: TEModelParameters>(
 mod test {
     use super::*;
     use ark_ec::ModelParameters;
-    use ark_nonnative_field::{
-        AllocatedNonNativeFieldVar, NonNativeFieldVar,
-    };
+    use ark_nonnative_field::{AllocatedNonNativeFieldVar, NonNativeFieldVar};
     use ark_relations::r1cs::ConstraintSystem;
     use ark_relations::r1cs::{ConstraintLayer, OptimizationGoal, TracingMode};
     use tracing_subscriber::layer::SubscriberExt;

@@ -379,7 +379,7 @@ mod test {
         let b: Vec<_> = (0..m).map(|_| P::ScalarField::rand(rng)).collect();
         //let a: Vec<_> = (0..m).map(|_| P::ScalarField::from(5u64)).collect();
         //let b: Vec<_> = (0..m).map(|_| P::ScalarField::from(5u64)).collect();
-        let r = ip_alloc_compute::<P>(cs.clone(), m, Some(a), Some(b));
+        let _r = ip_alloc_compute::<P>(cs.clone(), m, Some(a), Some(b));
         cs.finalize();
         assert!(cs.is_satisfied().unwrap());
         //for c in cs.constraint_names().unwrap() {

@@ -1,5 +1,6 @@
 //! R1CS relations for BP recursions
 use super::msm::{known_point_msm, known_scalar_msm};
+use super::{IpaInstance, IpaWitness};
 use ark_ec::models::twisted_edwards_extended::{GroupAffine, GroupProjective};
 use ark_ec::models::TEModelParameters;
 use ark_ff::prelude::*;
@@ -36,7 +37,7 @@ macro_rules! timed {
 ///
 /// * (t, a, b) are the witness
 /// * (p, s, gen_a, gen_b, q, c) are the instance
-struct BpRecRelation<P: TEModelParameters> {
+pub struct BpRecRelation<P: TEModelParameters> {
     k: usize,
     m: usize,
     p: GroupProjective<P>,
@@ -54,6 +55,23 @@ struct BpRecRelation<P: TEModelParameters> {
     gen_b: Vec<GroupProjective<P>>,
     q: GroupProjective<P>,
     //c: GroupProjective<P>,
+}
+
+impl<P: TEModelParameters> BpRecRelation<P> {
+    pub fn from_ipa_witness(instance: IpaInstance<GroupProjective<P>>, witness: IpaWitness<P::ScalarField>) -> Self {
+        BpRecRelation {
+            k: 0,
+            m: instance.gens.vec_size,
+            p: instance.result,
+            t: Some(Vec::new()),
+            s: Vec::new(),
+            a: Some(witness.a),
+            b: Some(witness.b),
+            gen_a: instance.gens.a_gens,
+            gen_b: instance.gens.b_gens,
+            q: instance.gens.ip_gen,
+        }
+    }
 }
 
 impl<P: TEModelParameters> BpRecRelation<P> {
@@ -149,6 +167,9 @@ where
             st + self.p
         });
         commit.enforce_equal(&lhs).unwrap();
+
+        // TODO: check commitment to t OR integrate with an R1CS compiler that does so
+        // automatically.
         Ok(())
     }
 }
@@ -161,41 +182,20 @@ mod test {
     use ark_relations::r1cs::{ConstraintLayer, OptimizationGoal, TracingMode};
     use tracing_subscriber::layer::SubscriberExt;
 
-    fn bp_rec_test<P: TEModelParameters>(m: usize)
+    fn bp_rec_test_k0<P: TEModelParameters>(m: usize)
     where
         P::BaseField: PrimeField,
     {
         let rng = &mut ark_std::test_rng();
-        // First, some boilerplat that helps with debugging
+        let (instance, witness) = IpaInstance::<GroupProjective<P>>::sample_from_length(rng, m);
+        let rec_relation = BpRecRelation::from_ipa_witness(instance, witness);
         let mut layer = ConstraintLayer::default();
         layer.mode = TracingMode::OnlyConstraints;
         let subscriber = tracing_subscriber::Registry::default().with(layer);
         let _guard = tracing::subscriber::set_default(subscriber);
         let cs: ConstraintSystemRef<P::BaseField> = ConstraintSystem::new_ref();
         cs.set_optimization_goal(OptimizationGoal::Constraints);
-        //let pts: Vec<_> = (0..len).map(|_| GroupAffine::<P>::rand(rng)).collect();
-        //let pts: Vec<_> = (0..2).map(|_| GroupAffine::<P>::rand(rng)).collect();
-        let a: Vec<_> = (0..m).map(|_| P::ScalarField::rand(rng)).collect();
-        let b: Vec<_> = (0..m).map(|_| P::ScalarField::rand(rng)).collect();
-        //let scalars = vec![P::ScalarField::from(7u32), P::ScalarField::from(2u32)];
-        //let scalar_ints: Vec<<P::ScalarField as PrimeField>::BigInt> =
-        //    scalars.iter().map(|s| s.into_repr()).collect();
-        //let result: GroupAffine<P> =
-        //    ark_ec::msm::VariableBaseMSM::multi_scalar_mul(&pts, &scalar_ints).into();
-        let msm: BpRecRelation<P> = BpRecRelation {
-            a: Some(a),
-            b: Some(b),
-            m,
-            k: 0,
-            gen_a: vec![],
-            gen_b: vec![],
-            q: Zero::zero(),
-            p: Zero::zero(),
-            t: None,
-            s: vec![],
-            //c: Zero::zero(),
-        };
-        msm.generate_constraints(cs.clone()).unwrap();
+        rec_relation.generate_constraints(cs.clone()).unwrap();
         cs.finalize();
         //for c in cs.constraint_names().unwrap() {
         //    println!("  {}", c);
@@ -213,9 +213,12 @@ mod test {
     fn jubjub() {
         println!("Base bits: {}", <<ark_ed_on_bls12_381::EdwardsParameters as ModelParameters>::BaseField as PrimeField>::size_in_bits());
         println!("Scalar bits: {}", <<ark_ed_on_bls12_381::EdwardsParameters as ModelParameters>::ScalarField as PrimeField>::size_in_bits());
-        bp_rec_test::<ark_ed_on_bls12_381::EdwardsParameters>(1);
-        bp_rec_test::<ark_ed_on_bls12_381::EdwardsParameters>(10);
-        bp_rec_test::<ark_ed_on_bls12_381::EdwardsParameters>(100);
+        bp_rec_test_k0::<ark_ed_on_bls12_381::EdwardsParameters>(1);
+        bp_rec_test_k0::<ark_ed_on_bls12_381::EdwardsParameters>(2);
+        bp_rec_test_k0::<ark_ed_on_bls12_381::EdwardsParameters>(3);
+        bp_rec_test_k0::<ark_ed_on_bls12_381::EdwardsParameters>(4);
+        //bp_rec_test_k0::<ark_ed_on_bls12_381::EdwardsParameters>(10);
+        //bp_rec_test_k0::<ark_ed_on_bls12_381::EdwardsParameters>(100);
         //msm_test::<ark_ed_on_bls12_381::EdwardsParameters>(1000);
         //msm_test::<ark_ed_on_bls12_381::EdwardsParameters>(5000);
     }
