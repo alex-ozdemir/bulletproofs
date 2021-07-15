@@ -37,7 +37,11 @@ macro_rules! timed {
 ///
 /// * (t, a, b) are the witness
 /// * (p, s, gen_a, gen_b, q, c) are the instance
-pub struct BpRecRelation<P: TEModelParameters> {
+///
+/// Some other machinery will check
+///
+/// c = commit(t)
+pub struct BpRecCircuit<P: TEModelParameters> {
     k: usize,
     m: usize,
     p: GroupProjective<P>,
@@ -54,12 +58,13 @@ pub struct BpRecRelation<P: TEModelParameters> {
     /// Size m
     gen_b: Vec<GroupProjective<P>>,
     q: GroupProjective<P>,
-    //c: GroupProjective<P>,
+    #[allow(dead_code)]
+    c: GroupProjective<P>,
 }
 
-impl<P: TEModelParameters> BpRecRelation<P> {
+impl<P: TEModelParameters> BpRecCircuit<P> {
     pub fn from_ipa_witness(instance: IpaInstance<GroupProjective<P>>, witness: IpaWitness<P::ScalarField>) -> Self {
-        BpRecRelation {
+        BpRecCircuit {
             k: 0,
             m: instance.gens.vec_size,
             p: instance.result,
@@ -70,11 +75,12 @@ impl<P: TEModelParameters> BpRecRelation<P> {
             gen_a: instance.gens.a_gens,
             gen_b: instance.gens.b_gens,
             q: instance.gens.ip_gen,
+            c: GroupProjective::<P>::zero(),
         }
     }
 }
 
-impl<P: TEModelParameters> BpRecRelation<P> {
+impl<P: TEModelParameters> BpRecCircuit<P> {
     fn check_sizes(&self) {
         assert_eq!(self.k, self.s.len());
         assert_eq!(self.m, self.gen_a.len());
@@ -85,7 +91,7 @@ impl<P: TEModelParameters> BpRecRelation<P> {
     }
 }
 
-impl<P: TEModelParameters> ConstraintSynthesizer<P::BaseField> for BpRecRelation<P>
+impl<P: TEModelParameters> ConstraintSynthesizer<P::BaseField> for BpRecCircuit<P>
 where
     P::BaseField: PrimeField,
 {
@@ -188,7 +194,7 @@ mod test {
     {
         let rng = &mut ark_std::test_rng();
         let (instance, witness) = IpaInstance::<GroupProjective<P>>::sample_from_length(rng, m);
-        let rec_relation = BpRecRelation::from_ipa_witness(instance, witness);
+        let rec_relation = BpRecCircuit::from_ipa_witness(instance, witness);
         let mut layer = ConstraintLayer::default();
         layer.mode = TracingMode::OnlyConstraints;
         let subscriber = tracing_subscriber::Registry::default().with(layer);

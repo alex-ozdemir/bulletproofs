@@ -5,13 +5,13 @@ use rand::Rng;
 pub type FiatShamirRng = ark_marlin::rng::FiatShamirRng<blake2::Blake2s>;
 
 pub mod iter_bp;
-pub mod k_bp;
 pub mod msm;
 pub mod r1cs;
 pub mod rec_bp;
 pub mod send;
 pub mod util;
 use util::msm;
+pub mod k_ary;
 
 #[derive(Clone)]
 pub struct IpaGens<G: Group> {
@@ -113,7 +113,7 @@ pub trait Ipa<G: Group> {
 
 #[cfg(test)]
 mod test {
-    use super::{iter_bp, rec_bp, send, FiatShamirRng, Ipa, IpaInstance, k_bp};
+    use super::{iter_bp, rec_bp, send, FiatShamirRng, Ipa, IpaInstance, k_ary};
     use ark_bls12_381::Bls12_381;
     use ark_ec::{group::Group, PairingEngine};
     use rand::Rng;
@@ -163,7 +163,7 @@ mod test {
             dbg!(&k);
             type G = <Bls12_381 as PairingEngine>::G1Projective;
             let base = send::SendIpa::<G>::default();
-            let i = k_bp::KaryBp::<G, send::SendIpa<G>>::new(k, base);
+            let i = k_ary::KaryBp::<G, send::SendIpa<G>>::new(k, base);
             test_ipa(vec![1, 2, 4, 8], 1, i);
         }
     }
