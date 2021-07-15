@@ -187,8 +187,8 @@ mod test {
         fs_msm_test::<ark_ed_on_bls12_381::EdwardsParameters>(1);
         fs_msm_test::<ark_ed_on_bls12_381::EdwardsParameters>(10);
         fs_msm_test::<ark_ed_on_bls12_381::EdwardsParameters>(100);
-        fs_msm_test::<ark_ed_on_bls12_381::EdwardsParameters>(1000);
-        fs_msm_test::<ark_ed_on_bls12_381::EdwardsParameters>(5000);
+        //fs_msm_test::<ark_ed_on_bls12_381::EdwardsParameters>(1000);
+        //fs_msm_test::<ark_ed_on_bls12_381::EdwardsParameters>(5000);
     }
 
     fn fb_msm_test<P: TEModelParameters>(m: usize) -> usize
