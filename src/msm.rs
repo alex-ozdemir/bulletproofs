@@ -43,10 +43,10 @@ where
         let chain = timed!(|| "build_chain", build_chain(scalars.clone()));
         // ~quadratic time..
         //timed!(|| "check chain", check_chain(&chain, &scalars));
-        println!(
-            "Additions per element: {}",
-            chain.adds.len() as f64 / scalars.len() as f64
-        );
+        //println!(
+        //    "Additions per element: {}",
+        //    chain.adds.len() as f64 / scalars.len() as f64
+        //);
         timed!(|| "embed chain", {
             for (a, b) in &chain.adds {
                 let new = points[*a].clone() + points[*b].clone();

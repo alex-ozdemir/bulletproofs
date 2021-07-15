@@ -3,22 +3,27 @@ use super::msm::{known_point_msm, known_scalar_msm};
 use super::{IpaInstance, IpaWitness};
 use crate::k_ary::unroll::{UnrolledBpInstance, UnrolledBpWitness};
 use crate::util::powers;
-use ark_ec::models::twisted_edwards_extended::{GroupAffine, GroupProjective};
-use ark_ec::models::TEModelParameters;
+use ark_ec::models::{
+    twisted_edwards_extended::{GroupAffine, GroupProjective},
+    TEModelParameters,
+};
 use ark_ff::prelude::*;
 use ark_nonnative_field::{
     AllocatedNonNativeFieldVar, NonNativeFieldMulResultVar, NonNativeFieldVar,
 };
-use ark_r1cs_std::bits::ToBitsGadget;
-use ark_r1cs_std::boolean::Boolean;
-use ark_r1cs_std::fields::fp::FpVar;
-use ark_r1cs_std::groups::curves::twisted_edwards::AffineVar;
-use ark_r1cs_std::{alloc::AllocationMode, eq::EqGadget};
+use ark_r1cs_std::{
+    bits::ToBitsGadget,
+    boolean::Boolean,
+    fields::fp::FpVar,
+    groups::curves::twisted_edwards::AffineVar,
+    {alloc::AllocationMode, eq::EqGadget},
+};
 use ark_relations::{
     ns,
-    r1cs::{self, ConstraintSynthesizer, ConstraintSystemRef},
+    r1cs::{self, ConstraintSynthesizer, ConstraintSystem, ConstraintSystemRef, OptimizationGoal, SynthesisMode},
 };
 use ark_std::{end_timer, start_timer};
+use rand::Rng;
 
 pub mod ip;
 
@@ -96,7 +101,6 @@ impl<P: TEModelParameters> BpRecCircuit<P> {
             .chain(witness.neg_cross_terms.into_iter().flatten())
             .map(|p| p.into())
             .collect();
-        println!("chals: {:#?}", instance.challs);
         let s: Vec<P::ScalarField> = instance
             .challs
             .iter()
@@ -109,7 +113,7 @@ impl<P: TEModelParameters> BpRecCircuit<P> {
             )
             .flatten()
             .collect();
-        let k = (instance.k -1) * instance.r * 2;
+        let k = (instance.k - 1) * instance.r * 2;
         assert_eq!(k, t.len());
         assert_eq!(k, s.len());
         BpRecCircuit {
@@ -124,6 +128,29 @@ impl<P: TEModelParameters> BpRecCircuit<P> {
             gen_b: instance.gens.b_gens,
             q: instance.gens.ip_gen,
             c: GroupProjective::<P>::zero(),
+        }
+    }
+    pub fn sized_instance<R: Rng>(k: usize, m: usize, rng: &mut R) -> Self {
+        let s: Vec<_> = (0..k).map(|_| P::ScalarField::rand(rng)).collect();
+        let gen_a: Vec<_> = (0..m).map(|_| GroupProjective::<P>::rand(rng)).collect();
+        // insecure
+        let gen_b = gen_a.clone();
+        let zero = GroupProjective::<P>::zero();
+        let a: Vec<_> = vec![P::ScalarField::zero(); m];
+        let b = a.clone();
+        let zeros = vec![zero.into(); k];
+        BpRecCircuit {
+            k,
+            m,
+            p: zero,
+            t: Some(zeros),
+            s,
+            a: Some(a),
+            b: Some(b),
+            gen_a,
+            gen_b,
+            q: zero,
+            c: zero,
         }
     }
 }
@@ -228,15 +255,26 @@ where
     }
 }
 
+pub fn measure_constraints<P: TEModelParameters, R: Rng>(k: usize, m: usize, rng: &mut R) -> usize
+where P::BaseField: PrimeField
+{
+    let circ = BpRecCircuit::<P>::sized_instance(k, m, rng);
+    let cs: ConstraintSystemRef<P::BaseField> = ConstraintSystem::new_ref();
+    cs.set_optimization_goal(OptimizationGoal::Constraints);
+    cs.set_mode(SynthesisMode::Setup);
+    circ.generate_constraints(cs.clone()).unwrap();
+    cs.num_constraints()
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::k_ary::unroll::prove_unroll;
     use ark_ec::ModelParameters;
     use ark_relations::r1cs::ConstraintSystem;
     use ark_relations::r1cs::{ConstraintLayer, OptimizationGoal, TracingMode};
-    use tracing_subscriber::layer::SubscriberExt;
     use rand::Rng;
-    use crate::k_ary::unroll::prove_unroll;
+    use tracing_subscriber::layer::SubscriberExt;
 
     fn ipa_check<P: TEModelParameters>(m: usize)
     where
@@ -279,14 +317,22 @@ mod test {
     where
         P::BaseField: PrimeField,
     {
-        println!("doing a unrolled circuit check with {} elems, k: {}, r: {}", init_size, k, r);
+        println!(
+            "doing a unrolled circuit check with {} elems, k: {}, r: {}",
+            init_size, k, r
+        );
         let rng = &mut ark_std::test_rng();
         let fs_seed: [u8; 32] = rng.gen();
         let mut fs_rng = crate::FiatShamirRng::from_seed(&fs_seed);
-        let (instance, witness) = IpaInstance::<GroupProjective<P>>::sample_from_length(rng, init_size);
+        let (instance, witness) =
+            IpaInstance::<GroupProjective<P>>::sample_from_length(rng, init_size);
         let (mut u_instance, mut u_witness) = UnrolledBpWitness::from_ipa(k, &instance, &witness);
         prove_unroll(r, &mut u_instance, &mut u_witness, &mut fs_rng);
         let rec_relation = BpRecCircuit::from_unrolled_bp_witness(u_instance, u_witness);
+        println!(
+            "R1CS FB-MSM size: {}, IP & commit size: {}",
+            rec_relation.k, rec_relation.m
+        );
         let mut layer = ConstraintLayer::default();
         layer.mode = TracingMode::OnlyConstraints;
         let subscriber = tracing_subscriber::Registry::default().with(layer);
@@ -313,7 +359,10 @@ mod test {
         println!("Scalar bits: {}", <<ark_ed_on_bls12_381::EdwardsParameters as ModelParameters>::ScalarField as PrimeField>::size_in_bits());
         unroll_check::<ark_ed_on_bls12_381::EdwardsParameters>(4, 2, 1);
         unroll_check::<ark_ed_on_bls12_381::EdwardsParameters>(8, 2, 2);
+        unroll_check::<ark_ed_on_bls12_381::EdwardsParameters>(8, 2, 3);
         unroll_check::<ark_ed_on_bls12_381::EdwardsParameters>(9, 3, 1);
         unroll_check::<ark_ed_on_bls12_381::EdwardsParameters>(9, 3, 2);
+        unroll_check::<ark_ed_on_bls12_381::EdwardsParameters>(2048, 4, 4);
+        unroll_check::<ark_ed_on_bls12_381::EdwardsParameters>(2048, 4, 5);
     }
 }

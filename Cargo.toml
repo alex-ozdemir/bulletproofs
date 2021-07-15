@@ -8,8 +8,8 @@ edition = "2018"
 [dependencies]
 ark-ec = "0.3"
 ark-ff = "0.3"
-#ark-std = "0.3"
-ark-std = { version = "0.3", default-features = false, features = [ "print-trace" ] }
+ark-std = { version = "0.3", default-features = false, features = [] }
+#ark-std = { version = "0.3", default-features = false, features = [ "print-trace" ] }
 ark-marlin = "0.3"
 ark-r1cs-std = { version = "0.3", features = [] }
 ark-relations = { version = "0.3", features = ["std"] }
@@ -29,6 +29,8 @@ ark-ed-on-bls12-381 = "0.3"
 
 tracing = { version = "0.1", default-features = false, features = [ "attributes" ] }
 tracing-subscriber = { version = "0.2" }
+structopt = { version = "0.3", default-features = false }
+#clap = "2.0"
 
 [profile.release]
 debug = true
