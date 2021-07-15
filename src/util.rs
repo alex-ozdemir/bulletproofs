@@ -1,5 +1,6 @@
 use ark_ec::group::Group;
 use ark_ff::{Field, Zero};
+use std::ops::Range;
 use std::ops::{AddAssign, MulAssign};
 
 pub fn msm<G: Group>(bases: &[G], scalars: &[G::ScalarField]) -> G {
@@ -28,13 +29,23 @@ pub fn scale_vec<S: Clone, F: MulAssign<S> + Clone>(s: &S, b: &[F]) -> Vec<F> {
     b
 }
 
-pub fn sum_vecs<F: AddAssign + Zero + Clone, I: IntoIterator<Item = Vec<F>>>(i: I, len: usize) -> Vec<F> {
-    i.into_iter().fold(vec![F::zero(); len], |mut acc, summand| {
-        assert_eq!(summand.len(), len);
-        for (a, b) in acc.iter_mut().zip(summand) {
-            *a += b;
-        }
-        acc
-    })
+pub fn sum_vecs<F: AddAssign + Zero + Clone, I: IntoIterator<Item = Vec<F>>>(
+    i: I,
+    len: usize,
+) -> Vec<F> {
+    i.into_iter()
+        .fold(vec![F::zero(); len], |mut acc, summand| {
+            assert_eq!(summand.len(), len);
+            for (a, b) in acc.iter_mut().zip(summand) {
+                *a += b;
+            }
+            acc
+        })
 }
 
+pub fn powers<F: Field>(f: F, range: Range<usize>) -> Vec<F> {
+    let first = f.pow(&[range.start as u64]);
+    std::iter::successors(Some(first), |acc| Some(*acc * f))
+        .take(range.end - range.start)
+        .collect()
+}

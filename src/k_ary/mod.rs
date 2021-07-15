@@ -1,10 +1,12 @@
 use crate::{
-    util::{ip, msm, scale_vec, sum_vecs},
+    util::{ip, msm, scale_vec, sum_vecs, powers},
     FiatShamirRng, Ipa, IpaGens, IpaInstance, IpaWitness,
 };
 use ark_ec::group::Group;
 use ark_ff::{Field, One, UniformRand, Zero};
 use std::marker::PhantomData;
+
+pub mod unroll;
 
 pub struct KaryBp<G, B> {
     k: usize,
@@ -23,7 +25,7 @@ impl<G, B> KaryBp<G, B> {
 }
 
 /// Copy array into a vector, length at least k
-fn zero_pad_to_multiple<Z: Zero + Clone>(array: &[Z], k: usize) -> Vec<Z> {
+pub fn zero_pad_to_multiple<Z: Zero + Clone>(array: &[Z], k: usize) -> Vec<Z> {
     let mut array = array.to_vec();
     let chunksize = (array.len() - 1) / k + 1;
     let desired_len = chunksize * k;
@@ -86,12 +88,8 @@ pub fn prove_step<G: Group>(
 
     // Fold everything in response to challenges...
     let x_inv = x.inverse().unwrap();
-    let x_pows: Vec<_> = std::iter::successors(Some(one), |x_i| Some(x * x_i))
-        .take(k)
-        .collect();
-    let x_inv_pows: Vec<_> = std::iter::successors(Some(one), |x_i| Some(x_inv * x_i))
-        .take(k)
-        .collect();
+    let x_pows = powers(x, 0..k);
+    let x_inv_pows = powers(x_inv, 0..k);
     debug_assert_eq!(
         one,
         x_pows

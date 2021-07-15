@@ -38,6 +38,7 @@ name = "ark-bp"
 version = "0.1.0"
 dependencies = [
  "ark-bls12-381",
+ "ark-crypto-primitives",
  "ark-ec",
  "ark-ed-on-bls12-381",
  "ark-ff",
@@ -51,6 +52,23 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "vector-addition-chain",
+]
+
+[[package]]
+name = "ark-crypto-primitives"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ff773c0ef8c655c98071d3026a63950798a66b2f45baef22d8334c1756f1bd18"
+dependencies = [
+ "ark-ec",
+ "ark-ff",
+ "ark-relations",
+ "ark-serialize",
+ "ark-snark",
+ "ark-std",
+ "blake2",
+ "derivative",
+ "digest",
 ]
 
 [[package]]
@@ -255,6 +273,17 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "ark-snark"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0dc3dff1a5f67a9c0b34df32b079752d8dd17f1e9d06253da0453db6c1b7cc8a"
+dependencies = [
+ "ark-ff",
+ "ark-relations",
+ "ark-std",
 ]
 
 [[package]]

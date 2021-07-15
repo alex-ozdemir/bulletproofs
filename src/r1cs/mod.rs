@@ -1,6 +1,8 @@
 //! R1CS relations for BP recursions
 use super::msm::{known_point_msm, known_scalar_msm};
 use super::{IpaInstance, IpaWitness};
+use crate::k_ary::unroll::{UnrolledBpInstance, UnrolledBpWitness};
+use crate::util::powers;
 use ark_ec::models::twisted_edwards_extended::{GroupAffine, GroupProjective};
 use ark_ec::models::TEModelParameters;
 use ark_ff::prelude::*;
@@ -59,17 +61,63 @@ pub struct BpRecCircuit<P: TEModelParameters> {
     gen_b: Vec<GroupProjective<P>>,
     q: GroupProjective<P>,
     #[allow(dead_code)]
+    /// Commitment(s) TODO
     c: GroupProjective<P>,
 }
 
 impl<P: TEModelParameters> BpRecCircuit<P> {
-    pub fn from_ipa_witness(instance: IpaInstance<GroupProjective<P>>, witness: IpaWitness<P::ScalarField>) -> Self {
+    pub fn from_ipa_witness(
+        instance: IpaInstance<GroupProjective<P>>,
+        witness: IpaWitness<P::ScalarField>,
+    ) -> Self {
         BpRecCircuit {
             k: 0,
             m: instance.gens.vec_size,
             p: instance.result,
             t: Some(Vec::new()),
             s: Vec::new(),
+            a: Some(witness.a),
+            b: Some(witness.b),
+            gen_a: instance.gens.a_gens,
+            gen_b: instance.gens.b_gens,
+            q: instance.gens.ip_gen,
+            c: GroupProjective::<P>::zero(),
+        }
+    }
+    pub fn from_unrolled_bp_witness(
+        instance: UnrolledBpInstance<GroupProjective<P>>,
+        witness: UnrolledBpWitness<P>,
+    ) -> Self {
+        // FS-MSM order: concat(pos_terms) || concat(neg_terms)
+        let t: Vec<GroupAffine<P>> = witness
+            .pos_cross_terms
+            .into_iter()
+            .flatten()
+            .chain(witness.neg_cross_terms.into_iter().flatten())
+            .map(|p| p.into())
+            .collect();
+        println!("chals: {:#?}", instance.challs);
+        let s: Vec<P::ScalarField> = instance
+            .challs
+            .iter()
+            .map(|x| powers(*x, 1..instance.k))
+            .chain(
+                instance
+                    .challs
+                    .iter()
+                    .map(|x| powers(x.inverse().unwrap(), 1..instance.k)),
+            )
+            .flatten()
+            .collect();
+        let k = (instance.k -1) * instance.r * 2;
+        assert_eq!(k, t.len());
+        assert_eq!(k, s.len());
+        BpRecCircuit {
+            k,
+            m: instance.gens.vec_size,
+            p: instance.result,
+            t: Some(t),
+            s: s,
             a: Some(witness.a),
             b: Some(witness.b),
             gen_a: instance.gens.a_gens,
@@ -187,8 +235,10 @@ mod test {
     use ark_relations::r1cs::ConstraintSystem;
     use ark_relations::r1cs::{ConstraintLayer, OptimizationGoal, TracingMode};
     use tracing_subscriber::layer::SubscriberExt;
+    use rand::Rng;
+    use crate::k_ary::unroll::prove_unroll;
 
-    fn bp_rec_test_k0<P: TEModelParameters>(m: usize)
+    fn ipa_check<P: TEModelParameters>(m: usize)
     where
         P::BaseField: PrimeField,
     {
@@ -216,16 +266,54 @@ mod test {
     }
 
     #[test]
-    fn jubjub() {
+    fn jubjub_ipa_test() {
         println!("Base bits: {}", <<ark_ed_on_bls12_381::EdwardsParameters as ModelParameters>::BaseField as PrimeField>::size_in_bits());
         println!("Scalar bits: {}", <<ark_ed_on_bls12_381::EdwardsParameters as ModelParameters>::ScalarField as PrimeField>::size_in_bits());
-        bp_rec_test_k0::<ark_ed_on_bls12_381::EdwardsParameters>(1);
-        bp_rec_test_k0::<ark_ed_on_bls12_381::EdwardsParameters>(2);
-        bp_rec_test_k0::<ark_ed_on_bls12_381::EdwardsParameters>(3);
-        bp_rec_test_k0::<ark_ed_on_bls12_381::EdwardsParameters>(4);
-        //bp_rec_test_k0::<ark_ed_on_bls12_381::EdwardsParameters>(10);
-        //bp_rec_test_k0::<ark_ed_on_bls12_381::EdwardsParameters>(100);
-        //msm_test::<ark_ed_on_bls12_381::EdwardsParameters>(1000);
-        //msm_test::<ark_ed_on_bls12_381::EdwardsParameters>(5000);
+        ipa_check::<ark_ed_on_bls12_381::EdwardsParameters>(1);
+        ipa_check::<ark_ed_on_bls12_381::EdwardsParameters>(2);
+        ipa_check::<ark_ed_on_bls12_381::EdwardsParameters>(3);
+        ipa_check::<ark_ed_on_bls12_381::EdwardsParameters>(4);
+    }
+
+    fn unroll_check<P: TEModelParameters>(init_size: usize, k: usize, r: usize)
+    where
+        P::BaseField: PrimeField,
+    {
+        println!("doing a unrolled circuit check with {} elems, k: {}, r: {}", init_size, k, r);
+        let rng = &mut ark_std::test_rng();
+        let fs_seed: [u8; 32] = rng.gen();
+        let mut fs_rng = crate::FiatShamirRng::from_seed(&fs_seed);
+        let (instance, witness) = IpaInstance::<GroupProjective<P>>::sample_from_length(rng, init_size);
+        let (mut u_instance, mut u_witness) = UnrolledBpWitness::from_ipa(k, &instance, &witness);
+        prove_unroll(r, &mut u_instance, &mut u_witness, &mut fs_rng);
+        let rec_relation = BpRecCircuit::from_unrolled_bp_witness(u_instance, u_witness);
+        let mut layer = ConstraintLayer::default();
+        layer.mode = TracingMode::OnlyConstraints;
+        let subscriber = tracing_subscriber::Registry::default().with(layer);
+        let _guard = tracing::subscriber::set_default(subscriber);
+        let cs: ConstraintSystemRef<P::BaseField> = ConstraintSystem::new_ref();
+        cs.set_optimization_goal(OptimizationGoal::Constraints);
+        rec_relation.generate_constraints(cs.clone()).unwrap();
+        cs.finalize();
+        //for c in cs.constraint_names().unwrap() {
+        //    println!("  {}", c);
+        //}
+        println!("Constraints: {}", cs.num_constraints());
+        println!("Witness vars: {}", cs.num_witness_variables());
+        println!("Instance vars: {}", cs.num_instance_variables());
+        //let constraints_per_m = cs.num_constraints() as f64 / m as f64;
+        //println!("m: {}, Constraints per m: {}", m, constraints_per_m,);
+        assert!(cs.is_satisfied().unwrap());
+        println!("Checked");
+    }
+
+    #[test]
+    fn jubjub_unroll_test() {
+        println!("Base bits: {}", <<ark_ed_on_bls12_381::EdwardsParameters as ModelParameters>::BaseField as PrimeField>::size_in_bits());
+        println!("Scalar bits: {}", <<ark_ed_on_bls12_381::EdwardsParameters as ModelParameters>::ScalarField as PrimeField>::size_in_bits());
+        unroll_check::<ark_ed_on_bls12_381::EdwardsParameters>(4, 2, 1);
+        unroll_check::<ark_ed_on_bls12_381::EdwardsParameters>(8, 2, 2);
+        unroll_check::<ark_ed_on_bls12_381::EdwardsParameters>(9, 3, 1);
+        unroll_check::<ark_ed_on_bls12_381::EdwardsParameters>(9, 3, 2);
     }
 }

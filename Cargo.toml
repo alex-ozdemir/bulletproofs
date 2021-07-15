@@ -15,6 +15,7 @@ ark-r1cs-std = { version = "0.3", features = [] }
 ark-relations = { version = "0.3", features = ["std"] }
 #ark-nonnative-field = "0.3"
 ark-nonnative-field = { git = "https://github.com/alex-ozdemir/nonnative.git", branch = "alloc-bits" }
+ark-crypto-primitives = { version = "0.3" }
 
 #vector-addition-chain = { path = "../vector-addition-chain" }
 vector-addition-chain = { git = "https://github.com/alex-ozdemir/vector-addition-chain.git" }
