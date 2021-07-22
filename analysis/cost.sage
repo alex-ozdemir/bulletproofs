@@ -43,6 +43,8 @@ class CircuitPrimitiveCosts(NamedTuple):
 # from measurement
 actual_cs_costs = ConstraintCostModel(1941.2, 1927.5, -8.2, 2622.5)
 
+no_reduce = ConstraintCostModel(20.0, 1927.5, -8.2, 0)
+
 
 # theoretical
 best_prims = CircuitPrimitiveCosts(
@@ -75,6 +77,12 @@ def pf_size(k, r, n, cs_costs: ConstraintCostModel):
 
 def bp_pf_size(n):
     return 2 * log(n, 2)
+
+
+def final_clear_pf_size(r, n, cs_costs: ConstraintCostModel):
+    k = n ^ (1/r)
+    ipa_elements = constraints(k, r, n, cs_costs) + k
+    return r + 2 + 2 * log(ipa_elements, 2)
 
 
 vars = var("l m k r n")
@@ -131,4 +139,18 @@ def print_size_table(size_fn):
 
 
 #print_size_table(actual_size)
-print_size_table(theory_size)
+#print_size_table(theory_size)
+
+final_clear_theory_size = final_clear_pf_size(r, n, no_reduce)
+print(final_clear_theory_size)
+for l2n in range(5, 21):
+    n_val = float(2^l2n)
+    best = 10000000
+    best_r = None
+    for r_val in range(1, 11):
+        s = float(final_clear_theory_size(n=n_val, r=r_val))
+        if s < best:
+            best = s
+            best_r = r_val
+    print(f"n = 2^{l2n}, size = {best}, r = {best_r}")
+
