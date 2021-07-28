@@ -23,6 +23,7 @@ use ark_r1cs_std::{
     boolean::Boolean,
     fields::fp::FpVar,
     groups::curves::twisted_edwards::AffineVar,
+    Assignment,
     {alloc::AllocationMode, eq::EqGadget},
 };
 use ark_relations::{
@@ -103,10 +104,9 @@ impl<P: TEModelParameters> BpRecCircuit<P> {
     ) -> Self {
         // FS-MSM order: concat(rounds, concat(pos_terms) || concat(neg_terms))
         let t: Vec<GroupAffine<P>> = witness
-            .pos_cross_terms
-            .into_iter()
-            .zip(witness.neg_cross_terms)
-            .flat_map(|(p_terms, n_terms)| p_terms.into_iter().chain(n_terms).map(Into::into))
+            .cross_terms
+            .iter()
+            .flat_map(|cross| cross.pos.iter().chain(&cross.neg).cloned().map(Into::into))
             .collect();
         let s: Vec<P::ScalarField> = instance
             .challs
@@ -128,6 +128,33 @@ impl<P: TEModelParameters> BpRecCircuit<P> {
             s,
             a: Some(witness.a),
             b: Some(witness.b),
+            gen_a: instance.gens.a_gens,
+            gen_b: instance.gens.b_gens,
+            q: instance.gens.ip_gen,
+        }
+    }
+    pub fn from_unrolled_bp_instance<Pair: TEPair<P1 = P>>(
+        instance: UnrolledBpInstance<Pair>,
+    ) -> Self {
+        let s: Vec<P::ScalarField> = instance
+            .challs
+            .iter()
+            .flat_map(|x| {
+                powers(*x, 1..instance.k)
+                    .into_iter()
+                    .chain(powers(x.inverse().unwrap(), 1..instance.k))
+            })
+            .collect();
+        let k = (instance.k - 1) * instance.r * 2;
+        assert_eq!(k, s.len());
+        BpRecCircuit {
+            k,
+            m: instance.gens.vec_size,
+            p: instance.result,
+            t: None,
+            s,
+            a: None,
+            b: None,
             gen_a: instance.gens.a_gens,
             gen_b: instance.gens.b_gens,
             q: instance.gens.ip_gen,
@@ -180,7 +207,7 @@ where
                 // TODO: check?
                 AffineVar::new_variable_omit_on_curve_check(
                     ns!(cs, "t alloc"),
-                    || Ok(self.t.as_ref().unwrap()[i].clone()),
+                    || self.t.as_ref().map(|a| a[i].clone()).get(),
                     AllocationMode::Witness,
                 )
             })
@@ -192,7 +219,7 @@ where
             .map(|i| {
                 let (f, bits) = AllocatedNonNativeFieldVar::new_variable_alloc_le_bits(
                     ns!(cs, "a"),
-                    || Ok(self.a.as_ref().unwrap()[i].clone()),
+                    || self.a.as_ref().map(|a| a[i].clone()).get(),
                     AllocationMode::Witness,
                 )
                 .unwrap();
@@ -206,7 +233,7 @@ where
             .map(|i| {
                 let (f, bits) = AllocatedNonNativeFieldVar::new_variable_alloc_le_bits(
                     ns!(cs, "b"),
-                    || Ok(self.b.as_ref().unwrap()[i].clone()),
+                    || self.b.as_ref().map(|b| b[i].clone()).get(),
                     AllocationMode::Witness,
                 )
                 .unwrap();

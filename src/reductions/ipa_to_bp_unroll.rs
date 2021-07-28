@@ -2,19 +2,14 @@ use crate::{
     curves::TEPair,
     proofs::bp_rec_kary::zero_pad_to_multiple,
     relations::{
-        bp_unroll::{UnrollRelation, UnrolledBpInstance, UnrolledBpWitness},
+        bp_unroll::{CrossTerms, UnrollRelation, UnrolledBpInstance, UnrolledBpWitness},
         ipa::IpaRelation,
     },
     util::{ip, msm, neg_powers, powers, rand_vec, scale_vec, sum_vecs, CollectIter},
     FiatShamirRng, Reduction, Relation,
 };
-use ark_ec::{
-    group::Group,
-    twisted_edwards_extended::{GroupAffine, GroupProjective},
-    ModelParameters,
-};
+use ark_ec::{group::Group, twisted_edwards_extended::GroupProjective, ModelParameters};
 use ark_ff::{One, UniformRand};
-use std::iter::once;
 use std::marker::PhantomData;
 
 pub struct IpaToBpUnroll<P: TEPair> {
@@ -124,19 +119,16 @@ pub fn prove_step<P: TEPair>(
                 .into()
         })
         .collect();
+    let cross = CrossTerms {
+        pos: pos_cross,
+        neg: neg_cross,
+    };
 
     let n_cross_terms = 2 * (k - 1);
     let n_aff_coords = 2 * n_cross_terms;
 
     let commit_gens: Vec<P::G2> = rand_vec(n_aff_coords, fs);
-    let aff_coords: Vec<<P::G2 as Group>::ScalarField> = pos_cross
-        .iter()
-        .chain(&neg_cross)
-        .flat_map(|proj| {
-            let aff: GroupAffine<P::P1> = proj.clone().into();
-            once(aff.x).chain(once(aff.y))
-        })
-        .collect();
+    let aff_coords = cross.to_aff_coord_list();
     let commit: P::G2 = msm(&commit_gens, &aff_coords);
 
     fs.absorb(&commit);
@@ -185,8 +177,7 @@ pub fn prove_step<P: TEPair>(
     instance.commits.push(commit);
     instance.commit_gens.push(commit_gens);
     instance.r += 1;
-    witness.pos_cross_terms.push(pos_cross);
-    witness.neg_cross_terms.push(neg_cross);
+    witness.cross_terms.push(cross);
     witness.a = a_next;
     witness.b = b_next;
 }
