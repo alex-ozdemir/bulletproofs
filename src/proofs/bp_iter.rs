@@ -1,7 +1,11 @@
+use crate::{
+    relations::ipa::{IpaInstance, IpaRelation, IpaWitness},
+    util::{ip, msm},
+    FiatShamirRng, Proof
+};
 use ark_ec::group::Group;
-use ark_ff::{UniformRand, Field, One};
+use ark_ff::{Field, One, UniformRand};
 use std::marker::PhantomData;
-use crate::{IpaWitness, IpaInstance, Ipa, FiatShamirRng, util::{msm, ip}};
 
 pub struct Bp<G>(PhantomData<G>);
 
@@ -29,7 +33,7 @@ impl<G: Group> Bp<G> {
     }
 }
 
-impl<G: Group> Ipa<G> for Bp<G> {
+impl<G: Group> Proof<IpaRelation<G>> for Bp<G> {
     type Proof = BpProof<G>;
 
     fn prove(
@@ -106,7 +110,7 @@ impl<G: Group> Ipa<G> for Bp<G> {
         }
     }
 
-    fn check(&self, instance: &IpaInstance<G>, proof: &Self::Proof, fs: &mut FiatShamirRng) -> bool {
+    fn verify(&self, instance: &IpaInstance<G>, proof: &Self::Proof, fs: &mut FiatShamirRng) {
         assert!(instance.gens.vec_size.is_power_of_two());
         let mut challenges: Vec<G::ScalarField> = Vec::new();
         for i in 0..proof.ls.len() {
@@ -136,7 +140,7 @@ impl<G: Group> Ipa<G> for Bp<G> {
             final_msm_points.push(proof.rs[j]);
             final_msm_scalars.push(-challenges[j].inverse().unwrap().square());
         }
-        instance.result == msm(&final_msm_points, &final_msm_scalars)
+        assert_eq!(instance.result, msm(&final_msm_points, &final_msm_scalars));
     }
 }
 
@@ -146,4 +150,3 @@ pub struct BpProof<G: Group> {
     final_a: G::ScalarField,
     final_b: G::ScalarField,
 }
-

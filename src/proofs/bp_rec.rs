@@ -1,6 +1,7 @@
 use crate::{
+    relations::ipa::{IpaInstance, IpaRelation, IpaWitness, IpaGens},
     util::{ip, msm},
-    FiatShamirRng, Ipa, IpaGens, IpaInstance, IpaWitness,
+    FiatShamirRng, Proof
 };
 use ark_ec::group::Group;
 use ark_ff::{Field, UniformRand};
@@ -14,7 +15,7 @@ impl<G, B> Bp<G, B> {
     }
 }
 
-impl<G: Group, B: Ipa<G>> Ipa<G> for Bp<G, B> {
+impl<G: Group, B: Proof<IpaRelation<G>>> Proof<IpaRelation<G>> for Bp<G, B> {
     type Proof = BpProof<G, B>;
 
     fn prove(
@@ -89,9 +90,9 @@ impl<G: Group, B: Ipa<G>> Ipa<G> for Bp<G, B> {
         }
     }
 
-    fn check(&self, instance: &IpaInstance<G>, proof: &Self::Proof, fs: &mut FiatShamirRng) -> bool {
+    fn verify(&self, instance: &IpaInstance<G>, proof: &Self::Proof, fs: &mut FiatShamirRng) {
         match proof {
-            BpProof::Base(base_proof) => self.1.check(instance, base_proof, fs),
+            BpProof::Base(base_proof) => self.1.verify(instance, base_proof, fs),
             BpProof::Rec(l, r, inner_proof) => {
                 fs.absorb(l);
                 fs.absorb(r);
@@ -120,13 +121,13 @@ impl<G: Group, B: Ipa<G>> Ipa<G> for Bp<G, B> {
                     },
                     result: p_next,
                 };
-                self.check(&instance_next, inner_proof, fs)
+                self.verify(&instance_next, inner_proof, fs)
             }
         }
     }
 }
 
-pub enum BpProof<G: Group, B: Ipa<G>> {
+pub enum BpProof<G: Group, B: Proof<IpaRelation<G>>> {
     Rec(G, G, Box<BpProof<G, B>>),
     Base(B::Proof),
 }

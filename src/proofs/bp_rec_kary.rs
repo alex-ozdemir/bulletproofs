@@ -1,12 +1,11 @@
 use crate::{
+    relations::ipa::{IpaInstance, IpaRelation, IpaWitness, IpaGens},
     util::{ip, msm, scale_vec, sum_vecs, powers},
-    FiatShamirRng, Ipa, IpaGens, IpaInstance, IpaWitness,
+    FiatShamirRng, Proof
 };
 use ark_ec::group::Group;
 use ark_ff::{Field, One, UniformRand, Zero};
 use std::marker::PhantomData;
-
-pub mod unroll;
 
 pub struct KaryBp<G, B> {
     k: usize,
@@ -184,7 +183,7 @@ pub fn verify_step<G: Group>(
     }
 }
 
-impl<G: Group, B: Ipa<G>> Ipa<G> for KaryBp<G, B> {
+impl<G: Group, B: Proof<IpaRelation<G>>> Proof<IpaRelation<G>> for KaryBp<G, B> {
     type Proof = BpProof<G, B>;
 
     fn prove(
@@ -207,27 +206,27 @@ impl<G: Group, B: Ipa<G>> Ipa<G> for KaryBp<G, B> {
         }
     }
 
-    fn check(
+    fn verify(
         &self,
         instance: &IpaInstance<G>,
         proof: &Self::Proof,
         fs: &mut FiatShamirRng,
-    ) -> bool {
+    ) {
         match proof {
-            BpProof::Base(base_proof) => self.base.check(instance, base_proof, fs),
+            BpProof::Base(base_proof) => self.base.verify(instance, base_proof, fs),
             BpProof::Rec {
                 pos_cross,
                 neg_cross,
                 rec,
             } => {
                 let instance_next = verify_step(self.k, instance, pos_cross, neg_cross, fs);
-                self.check(&instance_next, rec, fs)
+                self.verify(&instance_next, rec, fs)
             }
         }
     }
 }
 
-pub enum BpProof<G: Group, B: Ipa<G>> {
+pub enum BpProof<G: Group, B: Proof<IpaRelation<G>>> {
     Rec {
         pos_cross: Vec<G>,
         neg_cross: Vec<G>,

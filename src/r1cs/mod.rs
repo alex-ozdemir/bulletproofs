@@ -1,8 +1,11 @@
 //! R1CS relations for BP recursions
-use super::msm::{known_point_msm, known_scalar_msm};
-use super::{IpaInstance, IpaWitness};
-use crate::k_ary::unroll::{UnrolledBpInstance, UnrolledBpWitness};
-use crate::util::powers;
+use crate::{
+    relations::{
+        bp_unroll::{UnrolledBpInstance, UnrolledBpWitness},
+        ipa::{IpaInstance, IpaWitness},
+    },
+    util::powers,
+};
 use ark_ec::models::{
     twisted_edwards_extended::{GroupAffine, GroupProjective},
     TEModelParameters,
@@ -20,12 +23,17 @@ use ark_r1cs_std::{
 };
 use ark_relations::{
     ns,
-    r1cs::{self, ConstraintSynthesizer, ConstraintSystem, ConstraintSystemRef, OptimizationGoal, SynthesisMode},
+    r1cs::{
+        self, ConstraintSynthesizer, ConstraintSystem, ConstraintSystemRef, OptimizationGoal,
+        SynthesisMode,
+    },
 };
 use ark_std::{end_timer, start_timer};
 use rand::Rng;
 
 pub mod ip;
+pub mod msm;
+use msm::{known_point_msm, known_scalar_msm};
 
 macro_rules! timed {
     ($label:expr, $val:expr) => {{
@@ -121,7 +129,7 @@ impl<P: TEModelParameters> BpRecCircuit<P> {
             m: instance.gens.vec_size,
             p: instance.result,
             t: Some(t),
-            s: s,
+            s,
             a: Some(witness.a),
             b: Some(witness.b),
             gen_a: instance.gens.a_gens,
@@ -256,7 +264,8 @@ where
 }
 
 pub fn measure_constraints<P: TEModelParameters, R: Rng>(k: usize, m: usize, rng: &mut R) -> usize
-where P::BaseField: PrimeField
+where
+    P::BaseField: PrimeField,
 {
     let circ = BpRecCircuit::<P>::sized_instance(k, m, rng);
     let cs: ConstraintSystemRef<P::BaseField> = ConstraintSystem::new_ref();
@@ -269,7 +278,8 @@ where P::BaseField: PrimeField
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::k_ary::unroll::prove_unroll;
+    use crate::reductions::ipa_to_bp_unroll::IpaToBpUnroll;
+    use crate::Reduction;
     use ark_ec::ModelParameters;
     use ark_relations::r1cs::ConstraintSystem;
     use ark_relations::r1cs::{ConstraintLayer, OptimizationGoal, TracingMode};
@@ -326,8 +336,9 @@ mod test {
         let mut fs_rng = crate::FiatShamirRng::from_seed(&fs_seed);
         let (instance, witness) =
             IpaInstance::<GroupProjective<P>>::sample_from_length(rng, init_size);
-        let (mut u_instance, mut u_witness) = UnrolledBpWitness::from_ipa(k, &instance, &witness);
-        prove_unroll(r, &mut u_instance, &mut u_witness, &mut fs_rng);
+        let reducer = IpaToBpUnroll::new(k, r);
+        let (_proof, u_instance, u_witness) =
+            reducer.prove(&instance, &witness, &mut fs_rng);
         let rec_relation = BpRecCircuit::from_unrolled_bp_witness(u_instance, u_witness);
         println!(
             "R1CS FB-MSM size: {}, IP & commit size: {}",

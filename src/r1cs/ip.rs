@@ -1,6 +1,6 @@
 //! R1CS non-native IP gadget
 #![allow(dead_code,unused_imports)]
-use crate::msm::known_scalar_msm;
+use super::msm::known_scalar_msm;
 use ark_ec::models::twisted_edwards_extended::GroupAffine;
 use ark_ec::models::TEModelParameters;
 use ark_ec::AffineCurve;

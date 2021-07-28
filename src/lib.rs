@@ -1,160 +1,129 @@
-use ark_ec::group::Group;
-use ark_ff::Field;
-use rand::Rng;
+use std::marker::PhantomData;
 
 pub type FiatShamirRng = ark_marlin::rng::FiatShamirRng<blake2::Blake2s>;
 
-pub mod iter_bp;
-pub mod msm;
 pub mod r1cs;
-pub mod rec_bp;
-pub mod send;
 pub mod util;
-use util::msm;
-pub mod k_ary;
-pub mod compiler;
+pub mod reductions;
+pub mod relations;
+pub mod proofs;
 
-#[derive(Clone)]
-pub struct IpaGens<G: Group> {
-    pub vec_size: usize,
-    pub a_gens: Vec<G>,
-    pub b_gens: Vec<G>,
-    pub ip_gen: G,
+pub trait Relation {
+    type Inst;
+    type Wit;
+    fn check(x: &Self::Inst, w: &Self::Wit);
 }
 
-impl<G: Group> IpaGens<G> {
-    fn sample_from_length<R: Rng + ?Sized>(rng: &mut R, length: usize) -> Self {
-        IpaGens {
-            a_gens: (0..length).map(|_| G::rand(rng)).collect(),
-            b_gens: (0..length).map(|_| G::rand(rng)).collect(),
-            ip_gen: G::rand(rng),
-            vec_size: length,
-        }
-    }
-    fn commit_for_witness(&self, witness: &IpaWitness<G::ScalarField>) -> G {
-        let ip = witness.ip();
-        msm(&self.a_gens, &witness.a) + msm(&self.b_gens, &witness.b) + self.ip_gen.mul(&ip)
-    }
-}
-
-#[derive(Clone)]
-pub struct IpaInstance<G: Group> {
-    pub gens: IpaGens<G>,
-    pub result: G,
-}
-
-impl<G: Group> IpaInstance<G> {
-    fn from_gens_and_witness(gens: IpaGens<G>, witness: &IpaWitness<G::ScalarField>) -> Self {
-        let result = gens.commit_for_witness(witness);
-        Self { gens, result }
-    }
-    pub fn sample_from_length<R: Rng + ?Sized>(
-        rng: &mut R,
-        length: usize,
-    ) -> (Self, IpaWitness<G::ScalarField>) {
-        let gens = IpaGens::sample_from_length(rng, length);
-        let witness = IpaWitness::sample_from_length(rng, length);
-        (Self::from_gens_and_witness(gens, &witness), witness)
-    }
-    pub fn tweak(&mut self) {
-        self.result.double_in_place();
-    }
-}
-
-#[derive(Clone)]
-pub struct IpaWitness<F: Field> {
-    pub a: Vec<F>,
-    pub b: Vec<F>,
-}
-
-impl<F: Field> IpaWitness<F> {
-    fn sample_from_length<R: Rng + ?Sized>(rng: &mut R, length: usize) -> Self {
-        IpaWitness {
-            a: (0..length).map(|_| F::rand(rng)).collect(),
-            b: (0..length).map(|_| F::rand(rng)).collect(),
-        }
-    }
-}
-
-impl<F: Field> IpaWitness<F> {
-    fn ip(&self) -> F {
-        self.a
-            .iter()
-            .zip(&self.b)
-            .fold(F::zero(), |acc, (a, b)| acc + a.clone() * b)
-    }
-}
-
-pub trait Ipa<G: Group> {
+pub trait Reduction {
+    type From: Relation;
+    type To: Relation;
     type Proof;
     fn prove(
         &self,
-        instance: &IpaInstance<G>,
-        witness: &IpaWitness<G::ScalarField>,
+        x: &<Self::From as Relation>::Inst,
+        w: &<Self::From as Relation>::Wit,
+        fs: &mut FiatShamirRng,
+    ) -> (
+        Self::Proof,
+        <Self::To as Relation>::Inst,
+        <Self::To as Relation>::Wit,
+    );
+    fn verify(
+        &self,
+        x: &<Self::From as Relation>::Inst,
+        pf: &Self::Proof,
+        fs: &mut FiatShamirRng,
+    ) -> <Self::To as Relation>::Inst;
+}
+
+pub struct True;
+
+impl Relation for True {
+    type Inst = ();
+    type Wit = ();
+    fn check(_: &Self::Inst, _: &Self::Wit) {
+        // always holds
+    }
+}
+
+pub trait Proof<R: Relation> {
+    type Proof;
+    fn prove(
+        &self,
+        x: &<R as Relation>::Inst,
+        w: &<R as Relation>::Wit,
         fs: &mut FiatShamirRng,
     ) -> Self::Proof;
-    fn check(&self, instance: &IpaInstance<G>, proof: &Self::Proof, fs: &mut FiatShamirRng)
-        -> bool;
-    fn check_witness(
+    fn verify(&self, x: &<R as Relation>::Inst, pf: &Self::Proof, fs: &mut FiatShamirRng);
+}
+
+pub struct TrueReductionToProof<R: Relation, P: Reduction<From = R, To = True>>(
+    pub P,
+    pub PhantomData<R>,
+);
+
+impl<R: Relation, P: Reduction<From = R, To = True>> TrueReductionToProof<R, P> {
+    pub fn new(pf: P) -> Self {
+        Self(pf, Default::default())
+    }
+}
+
+impl<R: Relation, P: Reduction<From = R, To = True>> Proof<R> for TrueReductionToProof<R, P> {
+    type Proof = <P as Reduction>::Proof;
+    fn prove(
         &self,
-        instance: &IpaInstance<G>,
-        witness: &IpaWitness<G::ScalarField>,
-    ) -> bool {
-        let ip = witness.ip();
-        assert_eq!(instance.gens.vec_size, instance.gens.a_gens.len());
-        assert_eq!(instance.gens.vec_size, instance.gens.b_gens.len());
-        assert_eq!(instance.gens.vec_size, witness.a.len());
-        assert_eq!(instance.gens.vec_size, witness.b.len());
-        msm(&instance.gens.a_gens, &witness.a)
-            + msm(&instance.gens.b_gens, &witness.b)
-            + instance.gens.ip_gen.mul(&ip)
-            == instance.result
+        x: &<R as Relation>::Inst,
+        w: &<R as Relation>::Wit,
+        fs: &mut FiatShamirRng,
+    ) -> Self::Proof {
+        self.0.prove(x, w, fs).0
+    }
+    fn verify(&self, x: &<R as Relation>::Inst, pf: &Self::Proof, fs: &mut FiatShamirRng) {
+        self.0.verify(x, pf, fs);
     }
 }
 
 #[cfg(test)]
 mod test {
-    use super::{iter_bp, rec_bp, send, FiatShamirRng, Ipa, IpaInstance, k_ary};
+    use super::proofs::{bp_iter, bp_rec, ipa_send, bp_rec_kary};
+    use super::relations::ipa::{IpaRelation, IpaInstance};
+    use super::{Proof, Relation, FiatShamirRng};
     use ark_bls12_381::Bls12_381;
     use ark_ec::{group::Group, PairingEngine};
     use rand::Rng;
-    fn test_ipa<G: Group, I: Ipa<G>>(sizes: Vec<usize>, reps: usize, i: I) {
+    fn test_ipa<G: Group, I: Proof<IpaRelation<G>>>(sizes: Vec<usize>, reps: usize, i: I) {
         let rng = &mut ark_std::test_rng();
         for size in sizes {
             for _ in 0..reps {
-                let (mut instance, witness) = IpaInstance::<G>::sample_from_length(rng, size);
-                assert!(i.check_witness(&instance, &witness));
+                let (instance, witness) = IpaInstance::<G>::sample_from_length(rng, size);
+                IpaRelation::check(&instance, &witness);
                 let fs_seed: [u8; 32] = rng.gen();
                 let mut fs_rng = FiatShamirRng::from_seed(&fs_seed);
                 let proof = i.prove(&instance, &witness, &mut fs_rng);
                 let mut fs_rng = FiatShamirRng::from_seed(&fs_seed);
-                assert!(i.check(&instance, &proof, &mut fs_rng));
-                instance.tweak();
-                let mut fs_rng = FiatShamirRng::from_seed(&fs_seed);
-                assert!(!i.check(&instance, &proof, &mut fs_rng));
+                i.verify(&instance, &proof, &mut fs_rng);
             }
         }
     }
 
     #[test]
-    fn test_send_ipa() {
+    fn test_bp_ipa() {
         type G = <Bls12_381 as PairingEngine>::G1Projective;
-        let i = send::SendIpa::<G>::default();
-        test_ipa(vec![1, 2, 3, 4, 8, 9, 15], 1, i);
+        let i = bp_iter::Bp::<G>::default();
+        test_ipa(vec![1, 2, 4, 8, 16], 1, i);
     }
 
     #[test]
-    fn test_bp_ipa() {
+    fn test_send_ipa() {
         type G = <Bls12_381 as PairingEngine>::G1Projective;
-        let i = iter_bp::Bp::<G>::default();
-        test_ipa(vec![1, 2, 4, 8, 16], 1, i);
+        let i = ipa_send::SendIpa::<G>::default();
+        test_ipa(vec![1, 2, 3, 4, 8, 9, 15], 1, i);
     }
 
     #[test]
     fn test_rec_bp_ipa() {
         type G = <Bls12_381 as PairingEngine>::G1Projective;
-        let base = send::SendIpa::<G>::default();
-        let i = rec_bp::Bp::<G, send::SendIpa<G>>::new(base);
+        let i = bp_rec::Bp::<G, ipa_send::SendIpa<G>>::new(Default::default());
         test_ipa(vec![1, 2, 4, 8], 3, i);
     }
 
@@ -163,8 +132,8 @@ mod test {
         for k in vec![2, 3, 4] {
             dbg!(&k);
             type G = <Bls12_381 as PairingEngine>::G1Projective;
-            let base = send::SendIpa::<G>::default();
-            let i = k_ary::KaryBp::<G, send::SendIpa<G>>::new(k, base);
+            let base = ipa_send::SendIpa::<G>::default();
+            let i = bp_rec_kary::KaryBp::<G, ipa_send::SendIpa<G>>::new(k, base);
             test_ipa(vec![1, 2, 4, 8], 1, i);
         }
     }

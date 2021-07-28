@@ -1,27 +1,28 @@
-#![allow(dead_code)]
-//! This module implements the compiler described in `doc/compiler.pdf`.
+//! This module contains the relation from `doc/compiler.pdf`.
 //!
 //! It follows the notation there.
+//!
+//! The relation extends R1CS to witnesses which are partially committed.
 use ark_ff::prelude::*;
 use ark_ec::group::Group;
 use ark_relations::r1cs::{ConstraintMatrices, Matrix};
 use crate::util::{CollectIter, hadamard, msm};
 use std::iter::once;
 
-struct ComR1csInstance<G: Group> {
-    r1cs: ConstraintMatrices<G::ScalarField>,
-    n: usize,
-    r: usize,
-    m: usize,
+pub struct ComR1csInstance<G: Group> {
+    pub r1cs: ConstraintMatrices<G::ScalarField>,
+    pub n: usize,
+    pub r: usize,
+    pub m: usize,
     /// Commitment size (`m'`)
-    c: usize,
-    ts: Vec<Vec<G>>,
-    ss: Vec<G>,
+    pub c: usize,
+    pub ts: Vec<Vec<G>>,
+    pub ss: Vec<G>,
 }
 
-struct ComR1csWitness<F: Field> {
-    a: Vec<F>,
-    zs: Vec<Vec<F>>,
+pub struct ComR1csWitness<F: Field> {
+    pub a: Vec<F>,
+    pub zs: Vec<Vec<F>>,
 }
 
 fn mat_vec_mult<F: Field>(mat: &Matrix<F>, vec: &[F]) -> Vec<F> {
@@ -37,7 +38,7 @@ fn mat_vec_mult<F: Field>(mat: &Matrix<F>, vec: &[F]) -> Vec<F> {
 }
 
 impl<G: Group> ComR1csInstance<G> {
-    fn check_witness(&self, w: &ComR1csWitness<G::ScalarField>) {
+    pub fn check_witness(&self, w: &ComR1csWitness<G::ScalarField>) {
         assert_eq!(self.n, self.r1cs.num_instance_variables + self.r1cs.num_witness_variables);
         assert_eq!(self.r, self.ts.len());
         assert_eq!(self.r, self.ss.len());
@@ -59,3 +60,17 @@ impl<G: Group> ComR1csInstance<G> {
         }
     }
 }
+
+//    pub fn to_com_r1cs(&self) -> (com::ComR1csInstance<GroupProjective<P>>, Option<com::ComR1csWitness<P::ScalarField>>) {
+//        let cs: ConstraintSystemRef<P::BaseField> = ConstraintSystem::new_ref();
+//        cs.set_optimization_goal(OptimizationGoal::Constraints);
+//        cs.set_mode(SynthesisMode::Setup);
+//        circ.generate_constraints(cs.clone()).unwrap();
+//        let mats = cs.to_matrices().expect("No matrices");
+//        com::ComR1csInstance {
+//            r1cs: mats,
+//            n: mats.num_constraints,
+//            r: 
+//        }
+//        todo!()
+//    }

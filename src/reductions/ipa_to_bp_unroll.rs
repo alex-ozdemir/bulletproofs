@@ -1,61 +1,59 @@
-//! BP relation instances for unrolled protocols with commitments from the prover.
-
 use crate::{
-    k_ary::zero_pad_to_multiple,
+    proofs::bp_rec_kary::zero_pad_to_multiple,
+    relations::{
+        bp_unroll::{UnrollRelation, UnrolledBpInstance, UnrolledBpWitness},
+        ipa::IpaRelation,
+    },
     util::{ip, msm, scale_vec, sum_vecs},
-    FiatShamirRng, IpaGens, IpaInstance, IpaWitness,
+    FiatShamirRng,
 };
+use crate::{Reduction, Relation};
 use ark_ec::group::Group;
 use ark_ec::{twisted_edwards_extended::GroupProjective, TEModelParameters};
 use ark_ff::{Field, One, UniformRand};
+use std::marker::PhantomData;
 
-#[derive(Clone)]
-/// Represents the predicate that must be proved after unrolling the k-ary BP protocol for r rounds
-/// with the prover committing to the cross-terms in each round.
-pub struct UnrolledBpInstance<G: Group> {
-    /// Number of chunks per round
+pub struct IpaToBpUnroll<P: TEModelParameters> {
     pub k: usize,
-    /// Number of rounds
     pub r: usize,
-    /// Generators that remain
-    pub gens: IpaGens<G>,
-    /// Challenges that were used
-    pub challs: Vec<G::ScalarField>,
-    /// Commitments to cross-terms
-    pub commits: Vec<G>,
-    /// The original result: w/o cross-terms folded in
-    pub result: G,
+    pub _phants: PhantomData<P>,
 }
 
-pub struct UnrolledBpWitness<P: TEModelParameters> {
-    pub a: Vec<P::ScalarField>,
-    pub b: Vec<P::ScalarField>,
-    pub pos_cross_terms: Vec<Vec<GroupProjective<P>>>,
-    pub neg_cross_terms: Vec<Vec<GroupProjective<P>>>,
+impl<P: TEModelParameters> IpaToBpUnroll<P> {
+    pub fn new(k: usize, r: usize) -> Self {
+        Self {
+            k,
+            r,
+            _phants: Default::default(),
+        }
+    }
 }
-
-impl<P: TEModelParameters> UnrolledBpWitness<P> {
-    pub fn from_ipa(
-        k: usize,
-        instance: &IpaInstance<GroupProjective<P>>,
-        witness: &IpaWitness<P::ScalarField>,
-    ) -> (UnrolledBpInstance<GroupProjective<P>>, Self) {
-        (
-            UnrolledBpInstance {
-                k,
-                r: 0,
-                gens: instance.gens.clone(),
-                challs: vec![],
-                commits: vec![],
-                result: instance.result,
-            },
-            UnrolledBpWitness {
-                a: witness.a.clone(),
-                b: witness.b.clone(),
-                pos_cross_terms: vec![],
-                neg_cross_terms: vec![],
-            },
-        )
+impl<P: TEModelParameters> Reduction for IpaToBpUnroll<P> {
+    type From = IpaRelation<GroupProjective<P>>;
+    type To = UnrollRelation<P>;
+    /// The commitments
+    type Proof = Vec<GroupProjective<P>>;
+    fn prove(
+        &self,
+        x: &<Self::From as Relation>::Inst,
+        w: &<Self::From as Relation>::Wit,
+        fs: &mut FiatShamirRng,
+    ) -> (
+        Self::Proof,
+        <Self::To as Relation>::Inst,
+        <Self::To as Relation>::Wit,
+    ) {
+        let (mut u_x, mut u_w) = UnrolledBpWitness::from_ipa(self.k, &x, &w);
+        prove_unroll(self.r, &mut u_x, &mut u_w, fs);
+        (u_x.commits.clone(), u_x, u_w)
+    }
+    fn verify(
+        &self,
+        _x: &<Self::From as Relation>::Inst,
+        _pf: &Self::Proof,
+        _fs: &mut FiatShamirRng,
+    ) -> <Self::To as Relation>::Inst {
+        todo!()
     }
 }
 
