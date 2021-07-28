@@ -146,6 +146,8 @@ mod test {
         let reducer2 = UnrollToComR1cs::<P>::default();
         let ((), r_instance, r_witness) = reducer2.prove(&u_instance, &u_witness, &mut fs_rng);
         ComR1csRelation::check(&r_instance, &r_witness);
+        let v_r_instance = reducer2.verify(&u_instance, &(), &mut v_fs_rng);
+        ComR1csRelation::check(&v_r_instance, &r_witness);
     }
 
     #[test]
