@@ -49,3 +49,33 @@ pub fn powers<F: Field>(f: F, range: Range<usize>) -> Vec<F> {
         .take(range.end - range.start)
         .collect()
 }
+
+pub fn neg_powers<F: Field>(f: F, range: Range<usize>) -> Vec<F> {
+    powers(f.inverse().unwrap(), range)
+}
+
+pub fn hadamard_gp<G: Group>(bases: &[G], scalars: &[G::ScalarField]) -> Vec<G> {
+    assert_eq!(bases.len(), scalars.len());
+    bases
+        .iter()
+        .zip(scalars)
+        .map(|(base, scalar)| base.mul(scalar))
+        .collect()
+}
+
+pub fn hadamard<F: Field>(a: &[F], b: &[F]) -> Vec<F> {
+    assert_eq!(a.len(), b.len());
+    a.iter().zip(b).map(|(a, b)| *a * b).collect()
+}
+
+pub trait CollectIter: Iterator + Sized
+where
+    Self::Item: Sized,
+{
+    fn vcollect(self) -> Vec<<Self as Iterator>::Item> {
+        self.collect()
+    }
+}
+
+impl<I: Iterator> CollectIter for I {
+}

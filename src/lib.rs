@@ -12,6 +12,7 @@ pub mod send;
 pub mod util;
 use util::msm;
 pub mod k_ary;
+pub mod compiler;
 
 #[derive(Clone)]
 pub struct IpaGens<G: Group> {
