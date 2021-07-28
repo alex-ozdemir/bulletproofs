@@ -1,8 +1,13 @@
 use super::ipa::{IpaGens, IpaInstance, IpaWitness};
-use crate::{curves::TEPair, Relation};
-use ark_ec::{twisted_edwards_extended::GroupProjective, ModelParameters, TEModelParameters};
+use crate::{
+    curves::TEPair,
+    util::{msm, neg_powers, powers, CollectIter},
+    Relation,
+};
+use ark_ec::{group::Group, twisted_edwards_extended::{GroupProjective, GroupAffine}, ModelParameters, TEModelParameters};
 use derivative::Derivative;
 use std::marker::PhantomData;
+use std::iter::once;
 
 #[derive(Clone, Derivative)]
 #[derivative(Debug(bound = ""), PartialEq(bound = ""), Eq(bound = ""))]
@@ -38,8 +43,41 @@ pub struct UnrollRelation<P: TEPair>(pub PhantomData<P>);
 impl<P: TEPair> Relation for UnrollRelation<P> {
     type Inst = UnrolledBpInstance<P>;
     type Wit = UnrolledBpWitness<P::P1>;
-    fn check(_instance: &Self::Inst, _witness: &Self::Wit) {
-        unimplemented!()
+    fn check(instance: &Self::Inst, witness: &Self::Wit) {
+        let left = instance.result
+            + msm(
+                &(0..instance.r)
+                    .flat_map(|i| {
+                        witness.pos_cross_terms[i]
+                            .iter()
+                            .chain(&witness.neg_cross_terms[i])
+                            .cloned()
+                    })
+                    .vcollect(),
+                &(0..instance.r).flat_map(|i| {
+                    powers(instance.challs[i], 1..instance.k)
+                        .into_iter()
+                        .chain(neg_powers(instance.challs[i], 1..instance.k))
+                }).vcollect(),
+            );
+        let residual_witness = IpaWitness {
+            a: witness.a.clone(),
+            b: witness.b.clone(),
+        };
+        let right = instance.gens.commit_for_witness(&residual_witness);
+        assert_eq!(left, right);
+        for i in 0..instance.r {
+            let aff_coords: Vec<<P::G2 as Group>::ScalarField> = witness.pos_cross_terms[i]
+                .iter()
+                .chain(&witness.neg_cross_terms[i])
+                .flat_map(|proj| {
+                    let aff: GroupAffine<P::P1> = proj.clone().into();
+                    once(aff.x).chain(once(aff.y))
+                })
+                .collect();
+            let computed_commit = msm(&instance.commit_gens[i], &aff_coords);
+            assert_eq!(computed_commit, instance.commits[i]);
+        }
     }
 }
 

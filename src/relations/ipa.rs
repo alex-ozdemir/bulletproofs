@@ -21,7 +21,7 @@ impl<G: Group> IpaGens<G> {
             vec_size: length,
         }
     }
-    fn commit_for_witness(&self, witness: &IpaWitness<G::ScalarField>) -> G {
+    pub fn commit_for_witness(&self, witness: &IpaWitness<G::ScalarField>) -> G {
         let ip = witness.ip();
         msm(&self.a_gens, &witness.a) + msm(&self.b_gens, &witness.b) + self.ip_gen.mul(&ip)
     }

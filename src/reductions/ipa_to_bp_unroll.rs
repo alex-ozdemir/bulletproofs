@@ -271,10 +271,10 @@ mod test {
             IpaInstance::<GroupProjective<P::P1>>::sample_from_length(rng, init_size);
         let reducer = IpaToBpUnroll::<P>::new(k, r);
         let (proof, u_instance, u_witness) = reducer.prove(&instance, &witness, &mut fs_rng);
-        //UnrollRelation::check(&u_instance, &u_witness);
+        UnrollRelation::check(&u_instance, &u_witness);
         let verif_u_instance = reducer.verify(&instance, &proof, &mut v_fs_rng);
         assert_eq!(verif_u_instance, u_instance);
-        //UnrollRelation::check(&verif_u_instance, &u_witness);
+        UnrollRelation::check(&verif_u_instance, &u_witness);
     }
 
     #[test]
