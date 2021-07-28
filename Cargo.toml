@@ -22,10 +22,10 @@ vector-addition-chain = { git = "https://github.com/alex-ozdemir/vector-addition
 
 blake2 = "0.9"
 rand = "0.8"
-
-[dev-dependencies]
 ark-bls12-381 = "0.3"
 ark-ed-on-bls12-381 = "0.3"
+
+[dev-dependencies]
 
 tracing = { version = "0.1", default-features = false, features = [ "attributes" ] }
 tracing-subscriber = { version = "0.2" }

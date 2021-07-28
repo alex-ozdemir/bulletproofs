@@ -1,5 +1,4 @@
-use ark_bp::r1cs::measure_constraints;
-use ark_ed_on_bls12_381::EdwardsParameters as P;
+use ark_bp::{r1cs::measure_constraints, curves::models::JubJubPair};
 use structopt::StructOpt;
 
 #[derive(Debug, StructOpt)]
@@ -19,6 +18,6 @@ struct Opt {
 fn main() {
     let opt = Opt::from_args();
     let rng = &mut rand::thread_rng();
-    let cs = measure_constraints::<P, _>(opt.k, opt.m, rng);
+    let cs = measure_constraints::<JubJubPair, _>(opt.k, opt.m, rng);
     println!("{}", cs);
 }

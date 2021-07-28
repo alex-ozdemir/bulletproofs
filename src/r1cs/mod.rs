@@ -1,14 +1,18 @@
 //! R1CS relations for BP recursions
 use crate::{
+    curves::TEPair,
     relations::{
         bp_unroll::{UnrolledBpInstance, UnrolledBpWitness},
         ipa::{IpaInstance, IpaWitness},
     },
     util::powers,
 };
-use ark_ec::models::{
-    twisted_edwards_extended::{GroupAffine, GroupProjective},
-    TEModelParameters,
+use ark_ec::{
+    group::Group,
+    models::{
+        twisted_edwards_extended::{GroupAffine, GroupProjective},
+        ModelParameters, TEModelParameters,
+    },
 };
 use ark_ff::prelude::*;
 use ark_nonnative_field::{
@@ -73,9 +77,6 @@ pub struct BpRecCircuit<P: TEModelParameters> {
     /// Size m
     gen_b: Vec<GroupProjective<P>>,
     q: GroupProjective<P>,
-    #[allow(dead_code)]
-    /// Commitment(s) TODO
-    c: GroupProjective<P>,
 }
 
 impl<P: TEModelParameters> BpRecCircuit<P> {
@@ -94,11 +95,10 @@ impl<P: TEModelParameters> BpRecCircuit<P> {
             gen_a: instance.gens.a_gens,
             gen_b: instance.gens.b_gens,
             q: instance.gens.ip_gen,
-            c: GroupProjective::<P>::zero(),
         }
     }
-    pub fn from_unrolled_bp_witness(
-        instance: UnrolledBpInstance<GroupProjective<P>>,
+    pub fn from_unrolled_bp_witness<Pair: TEPair<P1 = P>>(
+        instance: UnrolledBpInstance<Pair>,
         witness: UnrolledBpWitness<P>,
     ) -> Self {
         // FS-MSM order: concat(rounds, concat(pos_terms) || concat(neg_terms))
@@ -131,7 +131,6 @@ impl<P: TEModelParameters> BpRecCircuit<P> {
             gen_a: instance.gens.a_gens,
             gen_b: instance.gens.b_gens,
             q: instance.gens.ip_gen,
-            c: GroupProjective::<P>::zero(),
         }
     }
     pub fn sized_instance<R: Rng>(k: usize, m: usize, rng: &mut R) -> Self {
@@ -154,7 +153,6 @@ impl<P: TEModelParameters> BpRecCircuit<P> {
             gen_a,
             gen_b,
             q: zero,
-            c: zero,
         }
     }
 }
@@ -259,12 +257,12 @@ where
     }
 }
 
-pub fn measure_constraints<P: TEModelParameters, R: Rng>(k: usize, m: usize, rng: &mut R) -> usize
+pub fn measure_constraints<P: TEPair, R: Rng>(k: usize, m: usize, rng: &mut R) -> usize
 where
-    P::BaseField: PrimeField,
+    <P::P1 as ModelParameters>::BaseField: PrimeField,
 {
-    let circ = BpRecCircuit::<P>::sized_instance(k, m, rng);
-    let cs: ConstraintSystemRef<P::BaseField> = ConstraintSystem::new_ref();
+    let circ = BpRecCircuit::<P::P1>::sized_instance(k, m, rng);
+    let cs: ConstraintSystemRef<<P::G2 as Group>::ScalarField> = ConstraintSystem::new_ref();
     cs.set_optimization_goal(OptimizationGoal::Constraints);
     cs.set_mode(SynthesisMode::Setup);
     circ.generate_constraints(cs.clone()).unwrap();
@@ -274,9 +272,7 @@ where
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::reductions::ipa_to_bp_unroll::IpaToBpUnroll;
-    use crate::Reduction;
-    use ark_ec::ModelParameters;
+    use crate::{curves::models::JubJubPair, reductions::ipa_to_bp_unroll::IpaToBpUnroll, Reduction};
     use ark_relations::r1cs::ConstraintSystem;
     use ark_relations::r1cs::{ConstraintLayer, OptimizationGoal, TracingMode};
     use rand::Rng;
@@ -319,9 +315,9 @@ mod test {
         ipa_check::<ark_ed_on_bls12_381::EdwardsParameters>(4);
     }
 
-    fn unroll_check<P: TEModelParameters>(init_size: usize, k: usize, r: usize)
+    fn unroll_check<P: TEPair>(init_size: usize, k: usize, r: usize)
     where
-        P::BaseField: PrimeField,
+        <P::P1 as ModelParameters>::BaseField: PrimeField,
     {
         println!(
             "doing a unrolled circuit check with {} elems, k: {}, r: {}",
@@ -331,8 +327,8 @@ mod test {
         let fs_seed: [u8; 32] = rng.gen();
         let mut fs_rng = crate::FiatShamirRng::from_seed(&fs_seed);
         let (instance, witness) =
-            IpaInstance::<GroupProjective<P>>::sample_from_length(rng, init_size);
-        let reducer = IpaToBpUnroll::new(k, r);
+            IpaInstance::<GroupProjective<P::P1>>::sample_from_length(rng, init_size);
+        let reducer = IpaToBpUnroll::<P>::new(k, r);
         let (_proof, u_instance, u_witness) = reducer.prove(&instance, &witness, &mut fs_rng);
         let rec_relation = BpRecCircuit::from_unrolled_bp_witness(u_instance, u_witness);
         println!(
@@ -343,7 +339,8 @@ mod test {
         layer.mode = TracingMode::OnlyConstraints;
         let subscriber = tracing_subscriber::Registry::default().with(layer);
         let _guard = tracing::subscriber::set_default(subscriber);
-        let cs: ConstraintSystemRef<P::BaseField> = ConstraintSystem::new_ref();
+        let cs: ConstraintSystemRef<<P::P1 as ModelParameters>::BaseField> =
+            ConstraintSystem::new_ref();
         cs.set_optimization_goal(OptimizationGoal::Constraints);
         rec_relation.generate_constraints(cs.clone()).unwrap();
         cs.finalize();
@@ -363,12 +360,12 @@ mod test {
     fn jubjub_unroll_test() {
         println!("Base bits: {}", <<ark_ed_on_bls12_381::EdwardsParameters as ModelParameters>::BaseField as PrimeField>::size_in_bits());
         println!("Scalar bits: {}", <<ark_ed_on_bls12_381::EdwardsParameters as ModelParameters>::ScalarField as PrimeField>::size_in_bits());
-        unroll_check::<ark_ed_on_bls12_381::EdwardsParameters>(4, 2, 1);
-        unroll_check::<ark_ed_on_bls12_381::EdwardsParameters>(8, 2, 2);
-        unroll_check::<ark_ed_on_bls12_381::EdwardsParameters>(8, 2, 3);
-        unroll_check::<ark_ed_on_bls12_381::EdwardsParameters>(9, 3, 1);
-        unroll_check::<ark_ed_on_bls12_381::EdwardsParameters>(9, 3, 2);
-        unroll_check::<ark_ed_on_bls12_381::EdwardsParameters>(2048, 4, 4);
-        unroll_check::<ark_ed_on_bls12_381::EdwardsParameters>(2048, 4, 5);
+        unroll_check::<JubJubPair>(4, 2, 1);
+        unroll_check::<JubJubPair>(8, 2, 2);
+        unroll_check::<JubJubPair>(8, 2, 3);
+        unroll_check::<JubJubPair>(9, 3, 1);
+        unroll_check::<JubJubPair>(9, 3, 2);
+        unroll_check::<JubJubPair>(2048, 4, 4);
+        unroll_check::<JubJubPair>(2048, 4, 5);
     }
 }

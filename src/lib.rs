@@ -2,6 +2,7 @@ use std::marker::PhantomData;
 
 pub type FiatShamirRng = ark_marlin::rng::FiatShamirRng<blake2::Blake2s>;
 
+pub mod curves;
 pub mod r1cs;
 pub mod util;
 pub mod reductions;

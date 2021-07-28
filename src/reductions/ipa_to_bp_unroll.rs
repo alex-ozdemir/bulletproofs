@@ -1,25 +1,24 @@
 use crate::{
+    curves::TEPair,
     proofs::bp_rec_kary::zero_pad_to_multiple,
     relations::{
         bp_unroll::{UnrollRelation, UnrolledBpInstance, UnrolledBpWitness},
         ipa::IpaRelation,
     },
     util::{ip, msm, scale_vec, sum_vecs},
-    FiatShamirRng,
+    FiatShamirRng, Reduction, Relation,
 };
-use crate::{Reduction, Relation};
-use ark_ec::group::Group;
-use ark_ec::{twisted_edwards_extended::GroupProjective, TEModelParameters};
+use ark_ec::{group::Group, twisted_edwards_extended::GroupProjective, ModelParameters};
 use ark_ff::{Field, One, UniformRand};
 use std::marker::PhantomData;
 
-pub struct IpaToBpUnroll<P: TEModelParameters> {
+pub struct IpaToBpUnroll<P: TEPair> {
     pub k: usize,
     pub r: usize,
     pub _phants: PhantomData<P>,
 }
 
-impl<P: TEModelParameters> IpaToBpUnroll<P> {
+impl<P: TEPair> IpaToBpUnroll<P> {
     pub fn new(k: usize, r: usize) -> Self {
         Self {
             k,
@@ -29,11 +28,11 @@ impl<P: TEModelParameters> IpaToBpUnroll<P> {
     }
 }
 
-impl<P: TEModelParameters> Reduction for IpaToBpUnroll<P> {
-    type From = IpaRelation<GroupProjective<P>>;
+impl<P: TEPair> Reduction for IpaToBpUnroll<P> {
+    type From = IpaRelation<GroupProjective<P::P1>>;
     type To = UnrollRelation<P>;
     /// The commitments
-    type Proof = Vec<GroupProjective<P>>;
+    type Proof = Vec<P::G2>;
     fn prove(
         &self,
         x: &<Self::From as Relation>::Inst,
@@ -58,10 +57,10 @@ impl<P: TEModelParameters> Reduction for IpaToBpUnroll<P> {
     }
 }
 
-pub fn prove_unroll<P: TEModelParameters>(
+pub fn prove_unroll<P: TEPair>(
     r: usize,
-    instance: &mut UnrolledBpInstance<GroupProjective<P>>,
-    witness: &mut UnrolledBpWitness<P>,
+    instance: &mut UnrolledBpInstance<P>,
+    witness: &mut UnrolledBpWitness<P::P1>,
     fs: &mut FiatShamirRng,
 ) {
     for _ in 0..r {
@@ -69,9 +68,9 @@ pub fn prove_unroll<P: TEModelParameters>(
     }
 }
 
-pub fn prove_step<P: TEModelParameters>(
-    instance: &mut UnrolledBpInstance<GroupProjective<P>>,
-    witness: &mut UnrolledBpWitness<P>,
+pub fn prove_step<P: TEPair>(
+    instance: &mut UnrolledBpInstance<P>,
+    witness: &mut UnrolledBpWitness<P::P1>,
     fs: &mut FiatShamirRng,
 ) {
     let k = instance.k;
@@ -100,28 +99,28 @@ pub fn prove_step<P: TEModelParameters>(
     // Then the positive cross-term T[i] for i in {0,..,k-2{ is
     // \sum j={1,..k-i} X[i+j,j]
     // should be multiplied by x^(i+1)
-    let pos_cross: Vec<GroupProjective<P>> = (0..k - 1)
+    let pos_cross: Vec<GroupProjective<P::P1>> = (0..k - 1)
         .map(|i| {
             let xs: Vec<_> = (0..k - i - 1).map(|j| x(i + j + 1, j)).collect();
             debug_assert_eq!(xs.len(), k - 1 - i);
-            xs.into_iter().sum::<GroupProjective<P>>().into()
+            xs.into_iter().sum::<GroupProjective<P::P1>>().into()
         })
         .collect();
     // Then the negative cross-term T[-i] for i in {0,..,k-2} is
     // \sum j={1,..k-i} X[i+j,j]
     // should be multiplied by x^-(i+1)
-    let neg_cross: Vec<GroupProjective<P>> = (0..k - 1)
+    let neg_cross: Vec<GroupProjective<P::P1>> = (0..k - 1)
         .map(|i| {
             (0..k - i - 1)
                 .map(|j| x(j, i + j + 1))
-                .sum::<GroupProjective<P>>()
+                .sum::<GroupProjective<P::P1>>()
                 .into()
         })
         .collect();
 
     // TODO: commit and feed FS.
-    let one = P::ScalarField::one();
-    let x = P::ScalarField::rand(fs);
+    let one = <P::P1 as ModelParameters>::ScalarField::one();
+    let x = <P::P1 as ModelParameters>::ScalarField::rand(fs);
 
     // Fold everything in response to challenges...
     let x_inv = x.inverse().unwrap();
@@ -181,12 +180,10 @@ mod test {
     use crate::{
         reductions::ipa_to_bp_unroll::IpaToBpUnroll,
         relations::{bp_unroll::UnrollRelation, ipa::IpaInstance},
+        curves::{TEPair, models::JubJubPair},
     };
-    use ark_ff::PrimeField;
     use rand::Rng;
-    fn unroll_check<P: TEModelParameters>(init_size: usize, k: usize, r: usize)
-    where
-        P::BaseField: PrimeField,
+    fn unroll_check<P: TEPair>(init_size: usize, k: usize, r: usize)
     {
         println!(
             "doing a unrolled circuit check with {} elems, k: {}, r: {}",
@@ -197,8 +194,8 @@ mod test {
         let mut fs_rng = crate::FiatShamirRng::from_seed(&fs_seed);
         let mut v_fs_rng = crate::FiatShamirRng::from_seed(&fs_seed);
         let (instance, witness) =
-            IpaInstance::<GroupProjective<P>>::sample_from_length(rng, init_size);
-        let reducer = IpaToBpUnroll::new(k, r);
+            IpaInstance::<GroupProjective<P::P1>>::sample_from_length(rng, init_size);
+        let reducer = IpaToBpUnroll::<P>::new(k, r);
         let (proof, u_instance, u_witness) = reducer.prove(&instance, &witness, &mut fs_rng);
         UnrollRelation::check(&u_instance, &u_witness);
         reducer.verify(&instance, &proof, &mut v_fs_rng);
@@ -207,12 +204,12 @@ mod test {
     #[test]
     #[ignore]
     fn jubjub_unroll_test() {
-        unroll_check::<ark_ed_on_bls12_381::EdwardsParameters>(4, 2, 1);
-        unroll_check::<ark_ed_on_bls12_381::EdwardsParameters>(8, 2, 2);
-        unroll_check::<ark_ed_on_bls12_381::EdwardsParameters>(8, 2, 3);
-        unroll_check::<ark_ed_on_bls12_381::EdwardsParameters>(9, 3, 1);
-        unroll_check::<ark_ed_on_bls12_381::EdwardsParameters>(9, 3, 2);
-        unroll_check::<ark_ed_on_bls12_381::EdwardsParameters>(2048, 4, 4);
-        unroll_check::<ark_ed_on_bls12_381::EdwardsParameters>(2048, 4, 5);
+        unroll_check::<JubJubPair>(4, 2, 1);
+        unroll_check::<JubJubPair>(8, 2, 2);
+        unroll_check::<JubJubPair>(8, 2, 3);
+        unroll_check::<JubJubPair>(9, 3, 1);
+        unroll_check::<JubJubPair>(9, 3, 2);
+        unroll_check::<JubJubPair>(2048, 4, 4);
+        unroll_check::<JubJubPair>(2048, 4, 5);
     }
 }
