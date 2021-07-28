@@ -58,14 +58,14 @@ where
             .cloned()
             .vcollect();
         assert_eq!(mats.num_instance_variables, 1);
-        let n = mats.num_instance_variables + mats.num_witness_variables;
-        assert_eq!(full_assignment.len(), n);
+        let m = mats.num_instance_variables + mats.num_witness_variables;
+        assert_eq!(full_assignment.len(), m);
         let num_cross_terms = (x.k - 1) * 2;
         let num_aff_coords = num_cross_terms * 2;
         let x_r1cs = ComR1csInstance {
-            n,
+            m,
             r: x.r,
-            m: mats.num_constraints,
+            n: mats.num_constraints,
             c: num_aff_coords,
             ts: x.commit_gens.clone(),
             ss: x.commits.clone(),
@@ -101,9 +101,9 @@ where
         let num_cross_terms = (x.k - 1) * 2;
         let num_aff_coords = num_cross_terms * 2;
         let x_r1cs = ComR1csInstance {
-            n: mats.num_instance_variables + mats.num_witness_variables,
+            m: mats.num_instance_variables + mats.num_witness_variables,
             r: x.r,
-            m: mats.num_constraints,
+            n: mats.num_constraints,
             c: num_aff_coords,
             ts: x.commit_gens.clone(),
             ss: x.commits.clone(),

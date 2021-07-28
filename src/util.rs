@@ -4,6 +4,7 @@ use std::ops::Range;
 use std::ops::{AddAssign, MulAssign};
 use rand::Rng;
 
+#[track_caller]
 pub fn msm<G: Group>(bases: &[G], scalars: &[G::ScalarField]) -> G {
     assert_eq!(bases.len(), scalars.len());
     let mut acc = G::zero();
@@ -13,6 +14,7 @@ pub fn msm<G: Group>(bases: &[G], scalars: &[G::ScalarField]) -> G {
     acc
 }
 
+#[track_caller]
 pub fn ip<F: Field>(a: &[F], b: &[F]) -> F {
     assert_eq!(a.len(), b.len());
     let mut acc = F::zero();
@@ -30,6 +32,7 @@ pub fn scale_vec<S: Clone, F: MulAssign<S> + Clone>(s: &S, b: &[F]) -> Vec<F> {
     b
 }
 
+#[track_caller]
 pub fn sum_vecs<F: AddAssign + Zero + Clone, I: IntoIterator<Item = Vec<F>>>(
     i: I,
     len: usize,

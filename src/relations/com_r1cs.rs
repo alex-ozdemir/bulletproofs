@@ -30,6 +30,15 @@ pub struct ComR1csWitness<F: Field> {
     pub zs: Vec<Vec<F>>,
 }
 
+impl<F: Field> ComR1csWitness<F> {
+    pub fn full_assignment(&self) -> Vec<F> {
+        once(F::one())
+            .chain(self.zs.iter().flat_map(|x| x.clone()))
+            .chain(self.a.iter().cloned())
+            .vcollect()
+    }
+}
+
 pub fn mat_vec_mult<F: Field>(mat: &Matrix<F>, vec: &[F]) -> Vec<F> {
     // matrices are lists of rows
     // rows are (value, idx) pairs
@@ -38,6 +47,28 @@ pub fn mat_vec_mult<F: Field>(mat: &Matrix<F>, vec: &[F]) -> Vec<F> {
         for (mat_val, c) in mat_row.iter() {
             assert!(c < &vec.len());
             result[r] += *mat_val * vec[*c];
+        }
+    }
+    result
+}
+
+pub fn mat_cols<F: Field>(mat: &Matrix<F>) -> usize {
+    mat.iter()
+        .flat_map(|row| row.iter().map(|(_, col_i)| *col_i))
+        .max()
+        .map(|i| i + 1)
+        .unwrap_or(0)
+}
+
+pub fn vec_mat_mult<F: Field>(vec: &[F], mat: &Matrix<F>, output_size: usize) -> Vec<F> {
+    // matrices are lists of rows
+    // rows are (value, idx) pairs
+    assert!(mat_cols(mat) <= output_size);
+    let mut result = vec![F::zero(); output_size];
+    assert_eq!(vec.len(), mat.len());
+    for (r, mat_row) in mat.iter().enumerate() {
+        for (mat_val, c) in mat_row.iter() {
+            result[*c] += *mat_val * vec[r];
         }
     }
     result
@@ -52,20 +83,17 @@ impl<G: Group> Relation for ComR1csRelation<G> {
     type Wit = ComR1csWitness<G::ScalarField>;
     fn check(x: &Self::Inst, w: &Self::Wit) {
         assert_eq!(
-            x.n,
+            x.m,
             x.r1cs.num_instance_variables + x.r1cs.num_witness_variables
         );
         assert_eq!(x.r, x.ts.len());
         assert_eq!(x.r, x.ss.len());
         x.ts.iter().for_each(|t| assert_eq!(t.len(), x.c));
         w.zs.iter().for_each(|t| assert_eq!(t.len(), x.c));
-        assert_eq!(x.m, x.r1cs.num_constraints);
+        assert_eq!(x.n, x.r1cs.num_constraints);
 
-        let z = once(G::ScalarField::one())
-            .chain(w.zs.iter().flat_map(|x| x.clone()))
-            .chain(w.a.iter().cloned())
-            .vcollect();
-        assert_eq!(x.n, z.len());
+        let z = w.full_assignment();
+        assert_eq!(x.m, z.len());
         let az = mat_vec_mult(&x.r1cs.a, &z);
         let bz = mat_vec_mult(&x.r1cs.b, &z);
         let cz = mat_vec_mult(&x.r1cs.c, &z);
