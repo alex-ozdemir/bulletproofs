@@ -28,6 +28,7 @@ impl<P: TEModelParameters> IpaToBpUnroll<P> {
         }
     }
 }
+
 impl<P: TEModelParameters> Reduction for IpaToBpUnroll<P> {
     type From = IpaRelation<GroupProjective<P>>;
     type To = UnrollRelation<P>;
@@ -172,4 +173,46 @@ pub fn prove_step<P: TEModelParameters>(
     witness.neg_cross_terms.push(neg_cross);
     witness.a = a_next;
     witness.b = b_next;
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::{
+        reductions::ipa_to_bp_unroll::IpaToBpUnroll,
+        relations::{bp_unroll::UnrollRelation, ipa::IpaInstance},
+    };
+    use ark_ff::PrimeField;
+    use rand::Rng;
+    fn unroll_check<P: TEModelParameters>(init_size: usize, k: usize, r: usize)
+    where
+        P::BaseField: PrimeField,
+    {
+        println!(
+            "doing a unrolled circuit check with {} elems, k: {}, r: {}",
+            init_size, k, r
+        );
+        let rng = &mut ark_std::test_rng();
+        let fs_seed: [u8; 32] = rng.gen();
+        let mut fs_rng = crate::FiatShamirRng::from_seed(&fs_seed);
+        let mut v_fs_rng = crate::FiatShamirRng::from_seed(&fs_seed);
+        let (instance, witness) =
+            IpaInstance::<GroupProjective<P>>::sample_from_length(rng, init_size);
+        let reducer = IpaToBpUnroll::new(k, r);
+        let (proof, u_instance, u_witness) = reducer.prove(&instance, &witness, &mut fs_rng);
+        UnrollRelation::check(&u_instance, &u_witness);
+        reducer.verify(&instance, &proof, &mut v_fs_rng);
+    }
+
+    #[test]
+    #[ignore]
+    fn jubjub_unroll_test() {
+        unroll_check::<ark_ed_on_bls12_381::EdwardsParameters>(4, 2, 1);
+        unroll_check::<ark_ed_on_bls12_381::EdwardsParameters>(8, 2, 2);
+        unroll_check::<ark_ed_on_bls12_381::EdwardsParameters>(8, 2, 3);
+        unroll_check::<ark_ed_on_bls12_381::EdwardsParameters>(9, 3, 1);
+        unroll_check::<ark_ed_on_bls12_381::EdwardsParameters>(9, 3, 2);
+        unroll_check::<ark_ed_on_bls12_381::EdwardsParameters>(2048, 4, 4);
+        unroll_check::<ark_ed_on_bls12_381::EdwardsParameters>(2048, 4, 5);
+    }
 }

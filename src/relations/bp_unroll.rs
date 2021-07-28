@@ -17,6 +17,7 @@ pub struct UnrolledBpInstance<G: Group> {
     /// Challenges that were used
     pub challs: Vec<G::ScalarField>,
     /// Commitments to cross-terms
+    /// Each commitments is to the positive terms and then the negative terms
     pub commits: Vec<G>,
     /// The original result: w/o cross-terms folded in
     pub result: G,

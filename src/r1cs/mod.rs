@@ -101,25 +101,21 @@ impl<P: TEModelParameters> BpRecCircuit<P> {
         instance: UnrolledBpInstance<GroupProjective<P>>,
         witness: UnrolledBpWitness<P>,
     ) -> Self {
-        // FS-MSM order: concat(pos_terms) || concat(neg_terms)
+        // FS-MSM order: concat(rounds, concat(pos_terms) || concat(neg_terms))
         let t: Vec<GroupAffine<P>> = witness
             .pos_cross_terms
             .into_iter()
-            .flatten()
-            .chain(witness.neg_cross_terms.into_iter().flatten())
-            .map(|p| p.into())
+            .zip(witness.neg_cross_terms)
+            .flat_map(|(p_terms, n_terms)| p_terms.into_iter().chain(n_terms).map(Into::into))
             .collect();
         let s: Vec<P::ScalarField> = instance
             .challs
             .iter()
-            .map(|x| powers(*x, 1..instance.k))
-            .chain(
-                instance
-                    .challs
-                    .iter()
-                    .map(|x| powers(x.inverse().unwrap(), 1..instance.k)),
-            )
-            .flatten()
+            .flat_map(|x| {
+                powers(*x, 1..instance.k)
+                    .into_iter()
+                    .chain(powers(x.inverse().unwrap(), 1..instance.k))
+            })
             .collect();
         let k = (instance.k - 1) * instance.r * 2;
         assert_eq!(k, t.len());
@@ -337,8 +333,7 @@ mod test {
         let (instance, witness) =
             IpaInstance::<GroupProjective<P>>::sample_from_length(rng, init_size);
         let reducer = IpaToBpUnroll::new(k, r);
-        let (_proof, u_instance, u_witness) =
-            reducer.prove(&instance, &witness, &mut fs_rng);
+        let (_proof, u_instance, u_witness) = reducer.prove(&instance, &witness, &mut fs_rng);
         let rec_relation = BpRecCircuit::from_unrolled_bp_witness(u_instance, u_witness);
         println!(
             "R1CS FB-MSM size: {}, IP & commit size: {}",
