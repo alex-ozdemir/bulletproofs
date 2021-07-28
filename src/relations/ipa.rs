@@ -4,7 +4,7 @@ use ark_ff::Field;
 use rand::Rng;
 use std::marker::PhantomData;
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct IpaGens<G: Group> {
     pub vec_size: usize,
     pub a_gens: Vec<G>,

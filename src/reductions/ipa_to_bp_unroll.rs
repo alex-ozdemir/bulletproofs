@@ -5,11 +5,16 @@ use crate::{
         bp_unroll::{UnrollRelation, UnrolledBpInstance, UnrolledBpWitness},
         ipa::IpaRelation,
     },
-    util::{ip, msm, scale_vec, sum_vecs},
+    util::{ip, msm, neg_powers, powers, rand_vec, scale_vec, sum_vecs, CollectIter},
     FiatShamirRng, Reduction, Relation,
 };
-use ark_ec::{group::Group, twisted_edwards_extended::GroupProjective, ModelParameters};
-use ark_ff::{Field, One, UniformRand};
+use ark_ec::{
+    group::Group,
+    twisted_edwards_extended::{GroupAffine, GroupProjective},
+    ModelParameters,
+};
+use ark_ff::{One, UniformRand};
+use std::iter::once;
 use std::marker::PhantomData;
 
 pub struct IpaToBpUnroll<P: TEPair> {
@@ -49,11 +54,13 @@ impl<P: TEPair> Reduction for IpaToBpUnroll<P> {
     }
     fn verify(
         &self,
-        _x: &<Self::From as Relation>::Inst,
-        _pf: &Self::Proof,
-        _fs: &mut FiatShamirRng,
+        x: &<Self::From as Relation>::Inst,
+        pf: &Self::Proof,
+        fs: &mut FiatShamirRng,
     ) -> <Self::To as Relation>::Inst {
-        todo!()
+        let mut u_x = UnrolledBpInstance::from_ipa(self.k, &x);
+        verify_unroll(self.r, &mut u_x, &pf, fs);
+        u_x
     }
 }
 
@@ -86,10 +93,10 @@ pub fn prove_step<P: TEPair>(
 
     // chunk them
     let ck_size = a.len() / k;
-    let a: Vec<_> = a.chunks_exact(ck_size).collect();
-    let b: Vec<_> = b.chunks_exact(ck_size).collect();
-    let a_gen: Vec<_> = a_gen.chunks_exact(ck_size).collect();
-    let b_gen: Vec<_> = b_gen.chunks_exact(ck_size).collect();
+    let a = a.chunks_exact(ck_size).vcollect();
+    let b = b.chunks_exact(ck_size).vcollect();
+    let a_gen = a_gen.chunks_exact(ck_size).vcollect();
+    let b_gen = b_gen.chunks_exact(ck_size).vcollect();
 
     // Compute cross-terms
     // Let X[i,j] = a[i]*A[j] + b[j]*B[i] + <a[i],b[j]>*Q
@@ -101,7 +108,7 @@ pub fn prove_step<P: TEPair>(
     // should be multiplied by x^(i+1)
     let pos_cross: Vec<GroupProjective<P::P1>> = (0..k - 1)
         .map(|i| {
-            let xs: Vec<_> = (0..k - i - 1).map(|j| x(i + j + 1, j)).collect();
+            let xs = (0..k - i - 1).map(|j| x(i + j + 1, j)).vcollect();
             debug_assert_eq!(xs.len(), k - 1 - i);
             xs.into_iter().sum::<GroupProjective<P::P1>>().into()
         })
@@ -118,18 +125,27 @@ pub fn prove_step<P: TEPair>(
         })
         .collect();
 
-    // TODO: commit and feed FS.
+    let n_cross_terms = 2 * (k - 1);
+    let n_aff_coords = 2 * n_cross_terms;
+
+    let commit_gens: Vec<P::G2> = rand_vec(n_aff_coords, fs);
+    let aff_coords: Vec<<P::G2 as Group>::ScalarField> = pos_cross
+        .iter()
+        .chain(&neg_cross)
+        .flat_map(|proj| {
+            let aff: GroupAffine<P::P1> = proj.clone().into();
+            once(aff.x).chain(once(aff.y))
+        })
+        .collect();
+    let commit: P::G2 = msm(&commit_gens, &aff_coords);
+
+    fs.absorb(&commit);
     let one = <P::P1 as ModelParameters>::ScalarField::one();
     let x = <P::P1 as ModelParameters>::ScalarField::rand(fs);
 
     // Fold everything in response to challenges...
-    let x_inv = x.inverse().unwrap();
-    let x_pows: Vec<_> = std::iter::successors(Some(one), |x_i| Some(x * x_i))
-        .take(k)
-        .collect();
-    let x_inv_pows: Vec<_> = std::iter::successors(Some(one), |x_i| Some(x_inv * x_i))
-        .take(k)
-        .collect();
+    let x_pows = powers(x, 0..k);
+    let x_inv_pows = neg_powers(x, 0..k);
     debug_assert_eq!(
         one,
         x_pows
@@ -166,7 +182,8 @@ pub fn prove_step<P: TEPair>(
     instance.gens.b_gens = b_gen_next;
     instance.gens.vec_size /= k;
     instance.challs.push(x);
-    // TODO: push commitment
+    instance.commits.push(commit);
+    instance.commit_gens.push(commit_gens);
     instance.r += 1;
     witness.pos_cross_terms.push(pos_cross);
     witness.neg_cross_terms.push(neg_cross);
@@ -174,17 +191,74 @@ pub fn prove_step<P: TEPair>(
     witness.b = b_next;
 }
 
+pub fn verify_unroll<P: TEPair>(
+    r: usize,
+    instance: &mut UnrolledBpInstance<P>,
+    pf: &[P::G2],
+    fs: &mut FiatShamirRng,
+) {
+    assert_eq!(pf.len(), r);
+    for i in 0..r {
+        verify_step(instance, &pf[i], fs);
+    }
+}
+
+pub fn verify_step<P: TEPair>(
+    instance: &mut UnrolledBpInstance<P>,
+    commit: &P::G2,
+    fs: &mut FiatShamirRng,
+) {
+    let k = instance.k;
+    let a_gen = zero_pad_to_multiple(&instance.gens.a_gens, k);
+    let b_gen = zero_pad_to_multiple(&instance.gens.b_gens, k);
+    debug_assert_eq!(a_gen.len() % k, 0);
+    debug_assert_eq!(b_gen.len() % k, 0);
+
+    // chunk them
+    let ck_size = a_gen.len() / k;
+    let a_gen = a_gen.chunks_exact(ck_size).vcollect();
+    let b_gen = b_gen.chunks_exact(ck_size).vcollect();
+
+    // generate cross term commitment generators
+    let n_cross_terms = 2 * (k - 1);
+    let n_aff_coords = 2 * n_cross_terms;
+
+    let commit_gens: Vec<P::G2> = rand_vec(n_aff_coords, fs);
+
+    // recieve cross-term commitment
+    fs.absorb(&commit);
+
+    let x = <P::P1 as ModelParameters>::ScalarField::rand(fs);
+    // Fold everything in response to challenges...
+    let x_pows = powers(x, 0..k);
+    let x_inv_pows = neg_powers(x, 0..k);
+    let a_gen_next = sum_vecs(
+        a_gen.iter().zip(&x_inv_pows).map(|(c, y)| scale_vec(y, c)),
+        ck_size,
+    );
+    let b_gen_next = sum_vecs(
+        b_gen.iter().zip(&x_pows).map(|(c, y)| scale_vec(y, c)),
+        ck_size,
+    );
+    instance.gens.a_gens = a_gen_next;
+    instance.gens.b_gens = b_gen_next;
+    instance.gens.vec_size /= k;
+    instance.challs.push(x);
+    instance.commits.push(commit.clone());
+    instance.commit_gens.push(commit_gens);
+    instance.r += 1;
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
     use crate::{
+        curves::{models::JubJubPair, TEPair},
         reductions::ipa_to_bp_unroll::IpaToBpUnroll,
-        relations::{bp_unroll::UnrollRelation, ipa::IpaInstance},
-        curves::{TEPair, models::JubJubPair},
+        relations::ipa::IpaInstance,
     };
     use rand::Rng;
-    fn unroll_check<P: TEPair>(init_size: usize, k: usize, r: usize)
-    {
+    fn unroll_check<P: TEPair>(init_size: usize, k: usize, r: usize) {
         println!(
             "doing a unrolled circuit check with {} elems, k: {}, r: {}",
             init_size, k, r
@@ -197,12 +271,13 @@ mod test {
             IpaInstance::<GroupProjective<P::P1>>::sample_from_length(rng, init_size);
         let reducer = IpaToBpUnroll::<P>::new(k, r);
         let (proof, u_instance, u_witness) = reducer.prove(&instance, &witness, &mut fs_rng);
-        UnrollRelation::check(&u_instance, &u_witness);
-        reducer.verify(&instance, &proof, &mut v_fs_rng);
+        //UnrollRelation::check(&u_instance, &u_witness);
+        let verif_u_instance = reducer.verify(&instance, &proof, &mut v_fs_rng);
+        assert_eq!(verif_u_instance, u_instance);
+        //UnrollRelation::check(&verif_u_instance, &u_witness);
     }
 
     #[test]
-    #[ignore]
     fn jubjub_unroll_test() {
         unroll_check::<JubJubPair>(4, 2, 1);
         unroll_check::<JubJubPair>(8, 2, 2);

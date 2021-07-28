@@ -1,9 +1,11 @@
 use super::ipa::{IpaGens, IpaInstance, IpaWitness};
 use crate::{curves::TEPair, Relation};
 use ark_ec::{twisted_edwards_extended::GroupProjective, ModelParameters, TEModelParameters};
+use derivative::Derivative;
 use std::marker::PhantomData;
 
-#[derive(Clone)]
+#[derive(Clone, Derivative)]
+#[derivative(Debug(bound = ""), PartialEq(bound = ""), Eq(bound = ""))]
 /// Represents the predicate that must be proved after unrolling the k-ary BP protocol for r rounds
 /// with the prover committing to the cross-terms in each round.
 pub struct UnrolledBpInstance<P: TEPair> {
@@ -64,5 +66,19 @@ impl<P1: TEModelParameters> UnrolledBpWitness<P1> {
                 neg_cross_terms: vec![],
             },
         )
+    }
+}
+
+impl<P: TEPair> UnrolledBpInstance<P> {
+    pub fn from_ipa(k: usize, instance: &IpaInstance<GroupProjective<P::P1>>) -> Self {
+        UnrolledBpInstance {
+            k,
+            r: 0,
+            gens: instance.gens.clone(),
+            challs: vec![],
+            commits: vec![],
+            result: instance.result,
+            commit_gens: vec![],
+        }
     }
 }

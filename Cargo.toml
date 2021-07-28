@@ -19,6 +19,7 @@ ark-crypto-primitives = { version = "0.3" }
 
 #vector-addition-chain = { path = "../vector-addition-chain" }
 vector-addition-chain = { git = "https://github.com/alex-ozdemir/vector-addition-chain.git" }
+derivative = "2.2.0"
 
 blake2 = "0.9"
 rand = "0.8"

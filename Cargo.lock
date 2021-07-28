@@ -48,6 +48,7 @@ dependencies = [
  "ark-relations",
  "ark-std",
  "blake2",
+ "derivative",
  "rand",
  "structopt",
  "tracing",

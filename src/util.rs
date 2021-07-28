@@ -1,7 +1,8 @@
 use ark_ec::group::Group;
-use ark_ff::{Field, Zero};
+use ark_ff::{Field, Zero, UniformRand};
 use std::ops::Range;
 use std::ops::{AddAssign, MulAssign};
+use rand::Rng;
 
 pub fn msm<G: Group>(bases: &[G], scalars: &[G::ScalarField]) -> G {
     assert_eq!(bases.len(), scalars.len());
@@ -78,4 +79,8 @@ where
 }
 
 impl<I: Iterator> CollectIter for I {
+}
+
+pub fn rand_vec<U: UniformRand, R: Rng>(n: usize, rng: &mut R) -> Vec<U> {
+    (0..n).map(|_| U::rand(rng)).collect()
 }
