@@ -1,43 +1,39 @@
 use crate::{
     curves::TEPair,
-    reductions::combinator::{RepeatWhile, Sequence, True, TrueReductionToProof},
+    reductions::combinator::{RepeatWhile, Sequence, TrueReductionToProof},
     reductions::{
         bp_2ary_step::Bp2aryStep, bp_unroll_to_com_r1cs::UnrollToComR1cs,
         com_r1cs_to_ipa::ComR1csToIpa, ipa_send::SendIpa, ipa_to_bp_unroll::IpaToBpUnroll,
     },
     relations::ipa::{IpaInstance, IpaRelation},
-    Proof, Reduction,
+    Proof,
 };
-use ark_ec::{group::Group, twisted_edwards_extended::GroupProjective, ModelParameters};
+use ark_ec::{twisted_edwards_extended::GroupProjective, ModelParameters};
 use ark_ff::PrimeField;
 
-/// Build the classic bullet-proofs protocol
+/// Build an IPA protocol which
+/// * does `r` rounds of committed `k`-ary recursion,
+/// * SNARKs the unrolled relation so far,
+/// * compiles the SNARK to an IPA in a new curve, and
+/// * proves that via the classic bulletproofs.
+///
+/// Defined using [crate::Reduction] combinators.
 pub fn llbp<P: TEPair>(k: usize, r: usize) -> impl Proof<IpaRelation<GroupProjective<P::P1>>>
 where
     <P::P1 as ModelParameters>::BaseField: PrimeField,
 {
-    TrueReductionToProof::new(Sequence::new(ipa_to_ipa_via_snark::<P>(k, r), classic_bp()))
-}
-
-fn classic_bp<G: Group>() -> impl Reduction<From = IpaRelation<G>, To = True> {
-    Sequence::new(
-        RepeatWhile::new(Bp2aryStep::default(), |x: &IpaInstance<G>| {
-            x.gens.vec_size > 1
-        }),
-        SendIpa::default(),
-    )
-}
-fn ipa_to_ipa_via_snark<P: TEPair>(
-    k: usize,
-    r: usize,
-) -> impl Reduction<From = IpaRelation<GroupProjective<P::P1>>, To = IpaRelation<P::G2>>
-where
-    <P::P1 as ModelParameters>::BaseField: PrimeField,
-{
-    Sequence::new(
-        Sequence::new(IpaToBpUnroll::<P>::new(k, r), UnrollToComR1cs::default()),
-        ComR1csToIpa::default(),
-    )
+    TrueReductionToProof::new(Sequence::new(
+        Sequence::new(
+            Sequence::new(IpaToBpUnroll::<P>::new(k, r), UnrollToComR1cs::default()),
+            ComR1csToIpa::default(),
+        ),
+        Sequence::new(
+            RepeatWhile::new(Bp2aryStep::default(), |x: &IpaInstance<P::G2>| {
+                x.gens.vec_size > 1
+            }),
+            SendIpa::default(),
+        ),
+    ))
 }
 
 #[cfg(test)]
