@@ -10,7 +10,7 @@ use std::marker::PhantomData;
 
 #[derive(Derivative)]
 #[derivative(Default(bound = ""))]
-struct Bp2aryStep<G: Group>(pub PhantomData<G>);
+pub struct Bp2aryStep<G: Group>(pub PhantomData<G>);
 
 impl<G: Group> Reduction for Bp2aryStep<G> {
     type From = IpaRelation<G>;

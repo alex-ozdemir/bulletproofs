@@ -1,5 +1,3 @@
-use std::marker::PhantomData;
-
 pub type FiatShamirRng = ark_marlin::rng::FiatShamirRng<blake2::Blake2s>;
 
 pub mod curves;
@@ -37,16 +35,6 @@ pub trait Reduction {
     ) -> <Self::To as Relation>::Inst;
 }
 
-pub struct True;
-
-impl Relation for True {
-    type Inst = ();
-    type Wit = ();
-    fn check(_: &Self::Inst, _: &Self::Wit) {
-        // always holds
-    }
-}
-
 pub trait Proof<R: Relation> {
     type Proof;
     fn prove(
@@ -58,32 +46,6 @@ pub trait Proof<R: Relation> {
     fn verify(&self, x: &<R as Relation>::Inst, pf: &Self::Proof, fs: &mut FiatShamirRng);
 }
 
-pub struct TrueReductionToProof<R: Relation, P: Reduction<From = R, To = True>>(
-    pub P,
-    pub PhantomData<R>,
-);
-
-impl<R: Relation, P: Reduction<From = R, To = True>> TrueReductionToProof<R, P> {
-    pub fn new(pf: P) -> Self {
-        Self(pf, Default::default())
-    }
-}
-
-impl<R: Relation, P: Reduction<From = R, To = True>> Proof<R> for TrueReductionToProof<R, P> {
-    type Proof = <P as Reduction>::Proof;
-    fn prove(
-        &self,
-        x: &<R as Relation>::Inst,
-        w: &<R as Relation>::Wit,
-        fs: &mut FiatShamirRng,
-    ) -> Self::Proof {
-        self.0.prove(x, w, fs).0
-    }
-    fn verify(&self, x: &<R as Relation>::Inst, pf: &Self::Proof, fs: &mut FiatShamirRng) {
-        self.0.verify(x, pf, fs);
-    }
-}
-
 #[cfg(test)]
 pub mod test {
     use super::proofs::{bp_iter, bp_rec, bp_rec_kary, ipa_send};
@@ -92,7 +54,7 @@ pub mod test {
     use ark_bls12_381::Bls12_381;
     use ark_ec::{group::Group, PairingEngine};
     use rand::Rng;
-    fn test_ipa<G: Group, I: Proof<IpaRelation<G>>>(sizes: Vec<usize>, reps: usize, i: I) {
+    pub fn test_ipa<G: Group, I: Proof<IpaRelation<G>>>(sizes: Vec<usize>, reps: usize, i: I) {
         let rng = &mut ark_std::test_rng();
         for size in sizes {
             for _ in 0..reps {
