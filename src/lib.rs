@@ -3,11 +3,11 @@ use std::marker::PhantomData;
 pub type FiatShamirRng = ark_marlin::rng::FiatShamirRng<blake2::Blake2s>;
 
 pub mod curves;
+pub mod proofs;
 pub mod r1cs;
-pub mod util;
 pub mod reductions;
 pub mod relations;
-pub mod proofs;
+pub mod util;
 
 pub trait Relation {
     type Inst;
@@ -85,10 +85,10 @@ impl<R: Relation, P: Reduction<From = R, To = True>> Proof<R> for TrueReductionT
 }
 
 #[cfg(test)]
-mod test {
-    use super::proofs::{bp_iter, bp_rec, ipa_send, bp_rec_kary};
-    use super::relations::ipa::{IpaRelation, IpaInstance};
-    use super::{Proof, Relation, FiatShamirRng};
+pub mod test {
+    use super::proofs::{bp_iter, bp_rec, bp_rec_kary, ipa_send};
+    use super::relations::ipa::{IpaInstance, IpaRelation};
+    use super::{FiatShamirRng, Proof, Reduction, Relation};
     use ark_bls12_381::Bls12_381;
     use ark_ec::{group::Group, PairingEngine};
     use rand::Rng;
@@ -137,5 +137,37 @@ mod test {
             let i = bp_rec_kary::KaryBp::<G, ipa_send::SendIpa<G>>::new(k, base);
             test_ipa(vec![1, 2, 4, 8], 1, i);
         }
+    }
+
+    pub fn test_reduction<R: Reduction>(
+        r: &R,
+        x: <R::From as Relation>::Inst,
+        w: <R::From as Relation>::Wit,
+    ) {
+        let p_fs_rng = &mut test_fs_rng();
+        let v_fs_rng = &mut test_fs_rng();
+        let (pf, p_x_2, p_w_2) = r.prove(&x, &w, p_fs_rng);
+        <R::To as Relation>::check(&p_x_2, &p_w_2);
+        let v_x_2 = r.verify(&x, &pf, v_fs_rng);
+        <R::To as Relation>::check(&v_x_2, &p_w_2);
+    }
+
+    pub fn test_fs_rng() -> FiatShamirRng {
+        let rng = &mut ark_std::test_rng();
+        let fs_seed: [u8; 32] = rng.gen();
+        FiatShamirRng::from_seed(&fs_seed)
+    }
+
+    pub fn test_proof<R: Relation, P: Proof<R>>(
+        sys: &P,
+        x: <R as Relation>::Inst,
+        w: <R as Relation>::Wit,
+    ) where
+        <R as Relation>::Inst: std::fmt::Debug + Eq,
+    {
+        let p_fs_rng = &mut test_fs_rng();
+        let v_fs_rng = &mut test_fs_rng();
+        let pf = sys.prove(&x, &w, p_fs_rng);
+        sys.verify(&x, &pf, v_fs_rng);
     }
 }

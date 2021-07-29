@@ -121,3 +121,31 @@ impl<G: Group> Reduction for Bp2aryStep<G> {
         instance_next
     }
 }
+
+#[cfg(test)]
+mod test {
+    use crate::{
+        test::test_reduction,
+        relations::ipa::{IpaInstance, IpaRelation},
+        Reduction,
+        Relation,
+    };
+    use super::Bp2aryStep;
+    use ark_ec::group::Group;
+    fn test_ipa<G: Group, I: Reduction<From=IpaRelation<G>>>(sizes: Vec<usize>, reps: usize, i: I) {
+        let rng = &mut ark_std::test_rng();
+        for size in sizes {
+            for _ in 0..reps {
+                let (instance, witness) = IpaInstance::<G>::sample_from_length(rng, size);
+                IpaRelation::check(&instance, &witness);
+                test_reduction(&i, instance, witness);
+            }
+        }
+    }
+    #[test]
+    fn test_bls() {
+        type G = ark_bls12_381::G1Projective;
+        let i = Bp2aryStep::<G>::default();
+        test_ipa(vec![2, 4, 8, 16], 4, i);
+    }
+}
