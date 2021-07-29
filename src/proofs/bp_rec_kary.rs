@@ -1,10 +1,10 @@
 use crate::{
     relations::ipa::{IpaInstance, IpaRelation, IpaWitness, IpaGens},
-    util::{ip, msm, scale_vec, sum_vecs, powers},
+    util::{ip, msm, scale_vec, sum_vecs, powers, zero_pad_to_multiple},
     FiatShamirRng, Proof
 };
 use ark_ec::group::Group;
-use ark_ff::{Field, One, UniformRand, Zero};
+use ark_ff::{Field, One, UniformRand};
 use std::marker::PhantomData;
 
 pub struct KaryBp<G, B> {
@@ -21,17 +21,6 @@ impl<G, B> KaryBp<G, B> {
             _phants: Default::default(),
         }
     }
-}
-
-/// Copy array into a vector, length at least k
-pub fn zero_pad_to_multiple<Z: Zero + Clone>(array: &[Z], k: usize) -> Vec<Z> {
-    let mut array = array.to_vec();
-    let chunksize = (array.len() - 1) / k + 1;
-    let desired_len = chunksize * k;
-    if desired_len > array.len() {
-        array.extend(std::iter::repeat(Z::zero()).take(desired_len - array.len()));
-    }
-    array
 }
 
 pub fn prove_step<G: Group>(

@@ -1,6 +1,6 @@
 use crate::{
     relations::ipa::{IpaGens, IpaInstance, IpaRelation, IpaWitness},
-    util::{ip, msm},
+    util::{ip, msm, zero_pad_to_multiple},
     FiatShamirRng, Reduction, Relation,
 };
 use ark_ec::group::Group;
@@ -26,10 +26,10 @@ impl<G: Group> Reduction for Bp2aryStep<G> {
         <Self::To as Relation>::Inst,
         <Self::To as Relation>::Wit,
     ) {
-        let a = witness.a.clone();
-        let b = witness.b.clone();
-        let a_gen = instance.gens.a_gens.clone();
-        let b_gen = instance.gens.b_gens.clone();
+        let a = zero_pad_to_multiple(&witness.a, 2);
+        let b = zero_pad_to_multiple(&witness.b, 2);
+        let a_gen = zero_pad_to_multiple(&instance.gens.a_gens, 2);
+        let b_gen = zero_pad_to_multiple(&instance.gens.b_gens, 2);
         let p = instance.result;
         let q = instance.gens.ip_gen;
         assert!(a.len() % 2 == 0);
@@ -88,8 +88,8 @@ impl<G: Group> Reduction for Bp2aryStep<G> {
         (ref l, ref r): &Self::Proof,
         fs: &mut FiatShamirRng,
     ) -> <Self::To as Relation>::Inst {
-        let a_gen = instance.gens.a_gens.clone();
-        let b_gen = instance.gens.b_gens.clone();
+        let a_gen = zero_pad_to_multiple(&instance.gens.a_gens, 2);
+        let b_gen = zero_pad_to_multiple(&instance.gens.b_gens, 2);
         let p = instance.result;
         let q = instance.gens.ip_gen;
         assert!(a_gen.len() % 2 == 0);

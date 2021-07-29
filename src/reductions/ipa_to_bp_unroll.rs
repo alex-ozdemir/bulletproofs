@@ -1,11 +1,10 @@
 use crate::{
     curves::TEPair,
-    proofs::bp_rec_kary::zero_pad_to_multiple,
     relations::{
         bp_unroll::{CrossTerms, UnrollRelation, UnrolledBpInstance, UnrolledBpWitness},
         ipa::IpaRelation,
     },
-    util::{ip, msm, neg_powers, powers, rand_vec, scale_vec, sum_vecs, CollectIter},
+    util::{zero_pad_to_multiple, ip, msm, neg_powers, powers, rand_vec, scale_vec, sum_vecs, CollectIter},
     FiatShamirRng, Reduction, Relation,
 };
 use ark_ec::{group::Group, twisted_edwards_extended::GroupProjective, ModelParameters};

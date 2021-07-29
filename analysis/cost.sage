@@ -123,6 +123,11 @@ def print_size_table(size_fn):
             best_size = min(sizes)
             change = (best_size - bp_size) / bp_size
             line.append(f"{change:11.0%}")
+            r_val = sizes.index(best_size) + 1
+            best_residual_fn = size_fn(r=r_val, n=n_val)
+            best_k_guess = float(n_val ^ (1 / (r_val + 1)))
+            best_k_best = minimize(best_residual_fn, [best_k_guess], verbose=False)[0]
+            line.append(f" k={best_k_best}")
             print(" ".join(line))
             if sizes[-1] < sizes[-2]:
                 r_vals.append(r_vals[-1] + 1)

@@ -87,3 +87,14 @@ impl<I: Iterator> CollectIter for I {
 pub fn rand_vec<U: UniformRand, R: Rng>(n: usize, rng: &mut R) -> Vec<U> {
     (0..n).map(|_| U::rand(rng)).collect()
 }
+
+/// Copy array into a vector, length at least k
+pub fn zero_pad_to_multiple<Z: Zero + Clone>(array: &[Z], k: usize) -> Vec<Z> {
+    let mut array = array.to_vec();
+    let chunksize = (array.len() - 1) / k + 1;
+    let desired_len = chunksize * k;
+    if desired_len > array.len() {
+        array.extend(std::iter::repeat(Z::zero()).take(desired_len - array.len()));
+    }
+    array
+}
