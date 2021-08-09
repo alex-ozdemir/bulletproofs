@@ -41,6 +41,7 @@ mod test {
     use super::llbp;
     use crate::{curves::models::JubJubPair, test::test_ipa};
     #[test]
+    #[ignore]
     fn test_bls() {
         let bp_pf = llbp::<JubJubPair>(8, 2);
         test_ipa(vec![1024], 1, bp_pf);

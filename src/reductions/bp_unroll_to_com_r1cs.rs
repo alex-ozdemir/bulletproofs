@@ -1,5 +1,5 @@
 use crate::{
-    curves::TEPair,
+    curves::TwoChain,
     r1cs::BpRecCircuit,
     relations::{
         bp_unroll::UnrollRelation,
@@ -8,8 +8,6 @@ use crate::{
     util::CollectIter,
     FiatShamirRng, Reduction, Relation,
 };
-use ark_ec::{group::Group, ModelParameters};
-use ark_ff::prelude::*;
 use ark_relations::r1cs::{
     ConstraintSynthesizer, ConstraintSystem, ConstraintSystemRef, OptimizationGoal, SynthesisMode,
 };
@@ -18,14 +16,11 @@ use std::marker::PhantomData;
 
 #[derive(Derivative)]
 #[derivative(Default(bound = ""))]
-pub struct UnrollToComR1cs<P>(pub PhantomData<P>);
+pub struct UnrollToComR1cs<C>(pub PhantomData<C>);
 
-impl<P: TEPair> Reduction for UnrollToComR1cs<P>
-where
-    <P::P1 as ModelParameters>::BaseField: PrimeField,
-{
-    type From = UnrollRelation<P>;
-    type To = ComR1csRelation<P::G2>;
+impl<C: TwoChain> Reduction for UnrollToComR1cs<C> {
+    type From = UnrollRelation<C>;
+    type To = ComR1csRelation<C::G2>;
     type Proof = ();
 
     fn prove(
@@ -38,8 +33,8 @@ where
         <Self::To as Relation>::Inst,
         <Self::To as Relation>::Wit,
     ) {
-        let cs: ConstraintSystemRef<<P::G2 as Group>::ScalarField> = ConstraintSystem::new_ref();
-        let circ = BpRecCircuit::from_unrolled_bp_witness::<P>(x.clone(), w.clone());
+        let cs: ConstraintSystemRef<C::LinkField> = ConstraintSystem::new_ref();
+        let circ = BpRecCircuit::from_unrolled_bp_witness(x.clone(), w.clone());
         cs.set_optimization_goal(OptimizationGoal::Constraints);
         cs.set_mode(SynthesisMode::Prove {
             construct_matrices: true,
@@ -49,7 +44,7 @@ where
         cs.finalize();
         let mats = cs.to_matrices().expect("No matrices");
         // (1, zs, a)
-        let full_assignment: Vec<<P::G2 as Group>::ScalarField> = cs
+        let full_assignment: Vec<C::LinkField> = cs
             .borrow()
             .unwrap()
             .instance_assignment
@@ -78,7 +73,7 @@ where
             .vcollect();
         let n_zs = zs.iter().map(|z| z.len()).sum::<usize>();
         let w_r1cs = ComR1csWitness {
-            a: full_assignment[1+n_zs..].to_vec(),
+            a: full_assignment[1 + n_zs..].to_vec(),
             zs,
         };
         ((), x_r1cs, w_r1cs)
@@ -89,8 +84,8 @@ where
         _pf: &Self::Proof,
         _fs: &mut FiatShamirRng,
     ) -> <Self::To as Relation>::Inst {
-        let cs: ConstraintSystemRef<<P::G2 as Group>::ScalarField> = ConstraintSystem::new_ref();
-        let circ = BpRecCircuit::from_unrolled_bp_instance::<P>(x.clone());
+        let cs: ConstraintSystemRef<C::LinkField> = ConstraintSystem::new_ref();
+        let circ = BpRecCircuit::from_unrolled_bp_instance(x.clone());
         cs.set_optimization_goal(OptimizationGoal::Constraints);
         cs.set_mode(SynthesisMode::Setup);
         assert_eq!(cs.num_instance_variables(), 1);
@@ -121,7 +116,8 @@ mod test {
         reductions::{bp_unroll_to_com_r1cs::UnrollToComR1cs, ipa_to_bp_unroll::IpaToBpUnroll},
         relations::{com_r1cs::ComR1csRelation, ipa::IpaInstance},
     };
-    use ark_ec::twisted_edwards_extended::GroupProjective;
+    use ark_ec::{twisted_edwards_extended::GroupProjective, ModelParameters};
+    use ark_ff::prelude::*;
     use rand::Rng;
     fn test_from_bp_unroll<P: TEPair>(init_size: usize, k: usize, r: usize)
     where
@@ -139,10 +135,10 @@ mod test {
             IpaInstance::<GroupProjective<P::P1>>::sample_from_length(rng, init_size);
         let reducer = IpaToBpUnroll::<P>::new(k, r);
         let (proof, u_instance, u_witness) = reducer.prove(&instance, &witness, &mut fs_rng);
-        //UnrollRelation::check(&u_instance, &u_witness);
+        UnrollRelation::check(&u_instance, &u_witness);
         let verif_u_instance = reducer.verify(&instance, &proof, &mut v_fs_rng);
         assert_eq!(verif_u_instance, u_instance);
-        //UnrollRelation::check(&verif_u_instance, &u_witness);
+        UnrollRelation::check(&verif_u_instance, &u_witness);
         let reducer2 = UnrollToComR1cs::<P>::default();
         let ((), r_instance, r_witness) = reducer2.prove(&u_instance, &u_witness, &mut fs_rng);
         ComR1csRelation::check(&r_instance, &r_witness);

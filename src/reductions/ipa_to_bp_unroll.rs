@@ -1,23 +1,26 @@
 use crate::{
-    curves::TEPair,
+    curves::TwoChain,
     relations::{
         bp_unroll::{CrossTerms, UnrollRelation, UnrolledBpInstance, UnrolledBpWitness},
         ipa::IpaRelation,
     },
-    util::{zero_pad_to_multiple, ip, msm, neg_powers, powers, rand_vec, scale_vec, sum_vecs, CollectIter},
+    util::{
+        ip, msm, neg_powers, powers, rand_vec, scale_vec, sum_vecs, zero_pad_to_multiple,
+        CollectIter,
+    },
     FiatShamirRng, Reduction, Relation,
 };
-use ark_ec::{group::Group, twisted_edwards_extended::GroupProjective, ModelParameters};
+use ark_ec::group::Group;
 use ark_ff::{One, UniformRand};
 use std::marker::PhantomData;
 
-pub struct IpaToBpUnroll<P: TEPair> {
+pub struct IpaToBpUnroll<C: TwoChain> {
     pub k: usize,
     pub r: usize,
-    pub _phants: PhantomData<P>,
+    pub _phants: PhantomData<C>,
 }
 
-impl<P: TEPair> IpaToBpUnroll<P> {
+impl<C: TwoChain> IpaToBpUnroll<C> {
     pub fn new(k: usize, r: usize) -> Self {
         Self {
             k,
@@ -27,11 +30,11 @@ impl<P: TEPair> IpaToBpUnroll<P> {
     }
 }
 
-impl<P: TEPair> Reduction for IpaToBpUnroll<P> {
-    type From = IpaRelation<GroupProjective<P::P1>>;
-    type To = UnrollRelation<P>;
+impl<C: TwoChain> Reduction for IpaToBpUnroll<C> {
+    type From = IpaRelation<C::G1>;
+    type To = UnrollRelation<C>;
     /// The commitments
-    type Proof = Vec<P::G2>;
+    type Proof = Vec<C::G2>;
     fn prove(
         &self,
         x: &<Self::From as Relation>::Inst,
@@ -58,10 +61,10 @@ impl<P: TEPair> Reduction for IpaToBpUnroll<P> {
     }
 }
 
-pub fn prove_unroll<P: TEPair>(
+pub fn prove_unroll<C: TwoChain>(
     r: usize,
-    instance: &mut UnrolledBpInstance<P>,
-    witness: &mut UnrolledBpWitness<P::P1>,
+    instance: &mut UnrolledBpInstance<C>,
+    witness: &mut UnrolledBpWitness<C::G1>,
     fs: &mut FiatShamirRng,
 ) {
     for _ in 0..r {
@@ -69,9 +72,9 @@ pub fn prove_unroll<P: TEPair>(
     }
 }
 
-pub fn prove_step<P: TEPair>(
-    instance: &mut UnrolledBpInstance<P>,
-    witness: &mut UnrolledBpWitness<P::P1>,
+pub fn prove_step<C: TwoChain>(
+    instance: &mut UnrolledBpInstance<C>,
+    witness: &mut UnrolledBpWitness<C::G1>,
     fs: &mut FiatShamirRng,
 ) {
     let k = instance.k;
@@ -100,21 +103,21 @@ pub fn prove_step<P: TEPair>(
     // Then the positive cross-term T[i] for i in {0,..,k-2{ is
     // \sum j={1,..k-i} X[i+j,j]
     // should be multiplied by x^(i+1)
-    let pos_cross: Vec<GroupProjective<P::P1>> = (0..k - 1)
+    let pos_cross: Vec<C::G1> = (0..k - 1)
         .map(|i| {
             let xs = (0..k - i - 1).map(|j| x(i + j + 1, j)).vcollect();
             debug_assert_eq!(xs.len(), k - 1 - i);
-            xs.into_iter().sum::<GroupProjective<P::P1>>().into()
+            xs.into_iter().sum::<C::G1>().into()
         })
         .collect();
     // Then the negative cross-term T[-i] for i in {0,..,k-2} is
     // \sum j={1,..k-i} X[i+j,j]
     // should be multiplied by x^-(i+1)
-    let neg_cross: Vec<GroupProjective<P::P1>> = (0..k - 1)
+    let neg_cross: Vec<C::G1> = (0..k - 1)
         .map(|i| {
             (0..k - i - 1)
                 .map(|j| x(j, i + j + 1))
-                .sum::<GroupProjective<P::P1>>()
+                .sum::<C::G1>()
                 .into()
         })
         .collect();
@@ -126,13 +129,13 @@ pub fn prove_step<P: TEPair>(
     let n_cross_terms = 2 * (k - 1);
     let n_aff_coords = 2 * n_cross_terms;
 
-    let commit_gens: Vec<P::G2> = rand_vec(n_aff_coords, fs);
+    let commit_gens: Vec<C::G2> = rand_vec(n_aff_coords, fs);
     let aff_coords = cross.to_aff_coord_list();
-    let commit: P::G2 = msm(&commit_gens, &aff_coords);
+    let commit: C::G2 = msm(&commit_gens, &aff_coords);
 
     fs.absorb(&commit);
-    let one = <P::P1 as ModelParameters>::ScalarField::one();
-    let x = <P::P1 as ModelParameters>::ScalarField::rand(fs);
+    let one = C::TopField::one();
+    let x = C::TopField::rand(fs);
 
     // Fold everything in response to challenges...
     let x_pows = powers(x, 0..k);
@@ -181,10 +184,10 @@ pub fn prove_step<P: TEPair>(
     witness.b = b_next;
 }
 
-pub fn verify_unroll<P: TEPair>(
+pub fn verify_unroll<C: TwoChain>(
     r: usize,
-    instance: &mut UnrolledBpInstance<P>,
-    pf: &[P::G2],
+    instance: &mut UnrolledBpInstance<C>,
+    pf: &[C::G2],
     fs: &mut FiatShamirRng,
 ) {
     assert_eq!(pf.len(), r);
@@ -193,9 +196,9 @@ pub fn verify_unroll<P: TEPair>(
     }
 }
 
-pub fn verify_step<P: TEPair>(
-    instance: &mut UnrolledBpInstance<P>,
-    commit: &P::G2,
+pub fn verify_step<C: TwoChain>(
+    instance: &mut UnrolledBpInstance<C>,
+    commit: &C::G2,
     fs: &mut FiatShamirRng,
 ) {
     let k = instance.k;
@@ -213,12 +216,12 @@ pub fn verify_step<P: TEPair>(
     let n_cross_terms = 2 * (k - 1);
     let n_aff_coords = 2 * n_cross_terms;
 
-    let commit_gens: Vec<P::G2> = rand_vec(n_aff_coords, fs);
+    let commit_gens: Vec<C::G2> = rand_vec(n_aff_coords, fs);
 
     // recieve cross-term commitment
     fs.absorb(&commit);
 
-    let x = <P::P1 as ModelParameters>::ScalarField::rand(fs);
+    let x = C::TopField::rand(fs);
     // Fold everything in response to challenges...
     let x_pows = powers(x, 0..k);
     let x_inv_pows = neg_powers(x, 0..k);
@@ -243,12 +246,12 @@ pub fn verify_step<P: TEPair>(
 mod test {
     use super::*;
     use crate::{
-        curves::{models::JubJubPair, TEPair},
+        curves::{models::JubJubPair, TwoChain},
         reductions::ipa_to_bp_unroll::IpaToBpUnroll,
         relations::ipa::IpaInstance,
     };
     use rand::Rng;
-    fn unroll_check<P: TEPair>(init_size: usize, k: usize, r: usize) {
+    fn unroll_check<C: TwoChain>(init_size: usize, k: usize, r: usize) {
         println!(
             "doing a unrolled circuit check with {} elems, k: {}, r: {}",
             init_size, k, r
@@ -257,9 +260,8 @@ mod test {
         let fs_seed: [u8; 32] = rng.gen();
         let mut fs_rng = crate::FiatShamirRng::from_seed(&fs_seed);
         let mut v_fs_rng = crate::FiatShamirRng::from_seed(&fs_seed);
-        let (instance, witness) =
-            IpaInstance::<GroupProjective<P::P1>>::sample_from_length(rng, init_size);
-        let reducer = IpaToBpUnroll::<P>::new(k, r);
+        let (instance, witness) = IpaInstance::<C::G1>::sample_from_length(rng, init_size);
+        let reducer = IpaToBpUnroll::<C>::new(k, r);
         let (proof, u_instance, u_witness) = reducer.prove(&instance, &witness, &mut fs_rng);
         UnrollRelation::check(&u_instance, &u_witness);
         let verif_u_instance = reducer.verify(&instance, &proof, &mut v_fs_rng);

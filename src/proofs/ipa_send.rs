@@ -1,4 +1,7 @@
-use crate::{FiatShamirRng, Proof, Relation, relations::ipa::{IpaRelation, IpaInstance, IpaWitness}};
+use crate::{
+    relations::ipa::{IpaInstance, IpaRelation, IpaWitness},
+    FiatShamirRng, Proof, Relation,
+};
 use ark_ec::group::Group;
 use std::marker::PhantomData;
 
@@ -22,12 +25,7 @@ impl<G: Group> Proof<IpaRelation<G>> for SendIpa<G> {
         witness.clone()
     }
 
-    fn verify(
-        &self,
-        instance: &IpaInstance<G>,
-        proof: &Self::Proof,
-        _fs: &mut FiatShamirRng,
-    ) {
+    fn verify(&self, instance: &IpaInstance<G>, proof: &Self::Proof, _fs: &mut FiatShamirRng) {
         IpaRelation::check(&instance, &proof);
     }
 }

@@ -1,6 +1,6 @@
 //! R1CS non-native IP gadget
-#![allow(dead_code,unused_imports)]
-use super::msm::known_scalar_msm;
+#![allow(dead_code, unused_imports)]
+use super::msm::known_scalar_msm_twe;
 use ark_ec::models::twisted_edwards_extended::GroupAffine;
 use ark_ec::models::TEModelParameters;
 use ark_ec::AffineCurve;
@@ -96,9 +96,21 @@ impl<F: PrimeField> Limb<F> {
             cs,
         }
     }
-    fn alloc_in_range(cs: ConstraintSystemRef<F>, limb_w: usize, val: Option<F>) -> (Self, Vec<Boolean<F>>) {
-        let bitvals: Option<Vec<bool>> = val.map(|v| v.into_repr().to_bits_le().into_iter().take(limb_w).collect());
-        let bits: Vec<Boolean<F>> = (0..limb_w).map(|i| Boolean::new_witness(cs.clone(), || Ok(bitvals.as_ref().get()?[i])).unwrap()).collect();
+    fn alloc_in_range(
+        cs: ConstraintSystemRef<F>,
+        limb_w: usize,
+        val: Option<F>,
+    ) -> (Self, Vec<Boolean<F>>) {
+        let bitvals: Option<Vec<bool>> = val.map(|v| {
+            v.into_repr()
+                .to_bits_le()
+                .into_iter()
+                .take(limb_w)
+                .collect()
+        });
+        let bits: Vec<Boolean<F>> = (0..limb_w)
+            .map(|i| Boolean::new_witness(cs.clone(), || Ok(bitvals.as_ref().get()?[i])).unwrap())
+            .collect();
         // TODO: don't discard bits?
         (Self::from_bits(&bits), bits)
     }
@@ -169,7 +181,9 @@ impl<F: PrimeField> Limb<F> {
     fn to_bits(&self) -> Vec<Boolean<F>> {
         let n_bits = bits_needed(self.max_val);
         let (big_limb, bits) = Self::alloc_in_range(self.cs.clone(), n_bits, self.val);
-        self.cs.enforce_constraint(lc!(), lc!(), lc!() + &big_limb.lc - &self.lc).unwrap();
+        self.cs
+            .enforce_constraint(lc!(), lc!(), lc!() + &big_limb.lc - &self.lc)
+            .unwrap();
         bits
     }
     /// Return a pair (carry, limb) such that
@@ -256,13 +270,17 @@ impl<F: PrimeField> LimbSeq<F> {
     }
     fn carry(&self) -> Self {
         let mut carry = Limb::zero(self.cs.clone());
-        let mut limbs: Vec<Limb<F>> = self.limbs.iter().map(|l| {
-            let mut l = l.clone();
-            l.add(&carry);
-            let (new_carry, new_l) = l.carry(self.limb_w);
-            carry = new_carry;
-            new_l
-        }).collect();
+        let mut limbs: Vec<Limb<F>> = self
+            .limbs
+            .iter()
+            .map(|l| {
+                let mut l = l.clone();
+                l.add(&carry);
+                let (new_carry, new_l) = l.carry(self.limb_w);
+                carry = new_carry;
+                new_l
+            })
+            .collect();
         while carry.max_val >= self.limb_max() {
             let (new_carry, new_l) = carry.carry(self.limb_w);
             limbs.push(new_l);
@@ -340,10 +358,7 @@ where
     );
     let c = cs.num_constraints();
     let _ip_limbs_carried = ip_limbs.carry();
-    println!(
-        "carry cs: {}",
-        cs.num_constraints() - c
-    );
+    println!("carry cs: {}", cs.num_constraints() - c);
     //let ip_bits = ip_limbs.reduce::<P::ScalarField>();
     AllocatedIpComputation {
         a_bits,

@@ -1,8 +1,8 @@
 use ark_ec::group::Group;
-use ark_ff::{Field, Zero, UniformRand};
+use ark_ff::{Field, UniformRand, Zero};
+use rand::Rng;
 use std::ops::Range;
 use std::ops::{AddAssign, MulAssign};
-use rand::Rng;
 
 #[track_caller]
 pub fn msm<G: Group>(bases: &[G], scalars: &[G::ScalarField]) -> G {
@@ -81,8 +81,7 @@ where
     }
 }
 
-impl<I: Iterator> CollectIter for I {
-}
+impl<I: Iterator> CollectIter for I {}
 
 pub fn rand_vec<U: UniformRand, R: Rng>(n: usize, rng: &mut R) -> Vec<U> {
     (0..n).map(|_| U::rand(rng)).collect()

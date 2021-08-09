@@ -46,13 +46,13 @@ actual_cs_costs = ConstraintCostModel(1941.2, 1927.5, -8.2, 2622.5)
 
 # theoretical
 best_prims = CircuitPrimitiveCosts(
-    fs_msm_adds_25000_elems=22 * 25000,  # can do better?
+    fs_msm_adds_25000_elems=21 * 25000,  # can do better?
     fb_msm_cs_per_bit=3.2,  # zcash
     cs_per_nonnative_ip_elem=6, # karatsuba, 3 limbs
     cs_per_nonnative_ip_reduce=actual_cs_costs.constant,  # idk
 )
 ark_prims = CircuitPrimitiveCosts(
-    fs_msm_adds_25000_elems=22 * 25000,
+    fs_msm_adds_25000_elems=21 * 25000,
     fb_msm_cs_per_bit=4, # no windows?
     cs_per_nonnative_ip_elem=100,  # too many limbs?
     cs_per_nonnative_ip_reduce=actual_cs_costs.constant,

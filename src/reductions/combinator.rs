@@ -1,4 +1,4 @@
-use crate::{FiatShamirRng, Reduction, Relation, Proof};
+use crate::{FiatShamirRng, Proof, Reduction, Relation};
 use std::marker::PhantomData;
 
 pub struct Sequence<R1: Reduction, R2: Reduction> {
@@ -140,4 +140,3 @@ impl<R: Relation, P: Reduction<From = R, To = True>> Proof<R> for TrueReductionT
         self.0.verify(x, pf, fs);
     }
 }
-

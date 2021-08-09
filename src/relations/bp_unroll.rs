@@ -1,14 +1,10 @@
 use super::ipa::{IpaGens, IpaInstance, IpaWitness};
 use crate::{
-    curves::TEPair,
+    curves::{AffCoords, TwoChain},
     util::{msm, neg_powers, powers, CollectIter},
     Relation,
 };
-use ark_ec::{
-    group::Group,
-    twisted_edwards_extended::{GroupAffine, GroupProjective},
-    ModelParameters, TEModelParameters,
-};
+use ark_ec::{group::Group, ProjectiveCurve};
 use derivative::Derivative;
 use std::iter::once;
 use std::marker::PhantomData;
@@ -22,22 +18,22 @@ use std::marker::PhantomData;
 )]
 /// Represents the predicate that must be proved after unrolling the k-ary BP protocol for r rounds
 /// with the prover committing to the cross-terms in each round.
-pub struct UnrolledBpInstance<P: TEPair> {
+pub struct UnrolledBpInstance<C: TwoChain> {
     /// Number of chunks per round
     pub k: usize,
     /// Number of rounds
     pub r: usize,
     /// Generators that remain
-    pub gens: IpaGens<GroupProjective<P::P1>>,
+    pub gens: IpaGens<C::G1>,
     /// Challenges that were used
-    pub challs: Vec<<P::P1 as ModelParameters>::ScalarField>,
+    pub challs: Vec<C::TopField>,
     /// Commitments to cross-terms
     /// Each commitments is to the positive terms and then the negative terms
-    pub commits: Vec<P::G2>,
+    pub commits: Vec<C::G2>,
     /// Commit
-    pub commit_gens: Vec<Vec<P::G2>>,
+    pub commit_gens: Vec<Vec<C::G2>>,
     /// The original result: w/o cross-terms folded in
-    pub result: GroupProjective<P::P1>,
+    pub result: C::G1,
 }
 
 #[derive(Derivative)]
@@ -47,16 +43,16 @@ pub struct CrossTerms<G: Group> {
     pub neg: Vec<G>,
 }
 
-impl<P: TEModelParameters> CrossTerms<GroupProjective<P>> {
+impl<P: AffCoords + ProjectiveCurve> CrossTerms<P> {
     /// Returns all cross terms in a list of affine coordinates.
     /// The order is x then y for all positive, then negative, terms
-    pub fn to_aff_coord_list(&self) -> Vec<P::BaseField> {
+    pub fn to_aff_coord_list(&self) -> Vec<<P as AffCoords>::BaseField> {
         self.pos
             .iter()
             .chain(&self.neg)
             .flat_map(|proj| {
-                let aff: GroupAffine<P> = proj.clone().into();
-                once(aff.x).chain(once(aff.y))
+                let (x, y) = proj.get_xy();
+                once(x).chain(once(y))
             })
             .collect()
     }
@@ -64,23 +60,24 @@ impl<P: TEModelParameters> CrossTerms<GroupProjective<P>> {
 
 #[derive(Derivative)]
 #[derivative(Clone(bound = ""))]
-pub struct UnrolledBpWitness<P: TEModelParameters> {
-    pub a: Vec<P::ScalarField>,
-    pub b: Vec<P::ScalarField>,
-    pub cross_terms: Vec<CrossTerms<GroupProjective<P>>>,
+pub struct UnrolledBpWitness<G: Group> {
+    pub a: Vec<G::ScalarField>,
+    pub b: Vec<G::ScalarField>,
+    pub cross_terms: Vec<CrossTerms<G>>,
 }
 
-pub struct UnrollRelation<P: TEPair>(pub PhantomData<P>);
+pub struct UnrollRelation<C: TwoChain>(pub PhantomData<C>);
 
-impl<P: TEPair> Relation for UnrollRelation<P> {
-    type Inst = UnrolledBpInstance<P>;
-    type Wit = UnrolledBpWitness<P::P1>;
+impl<C: TwoChain> Relation for UnrollRelation<C> {
+    type Inst = UnrolledBpInstance<C>;
+    type Wit = UnrolledBpWitness<C::G1>;
     fn check(instance: &Self::Inst, witness: &Self::Wit) {
         let left = instance.result
             + msm(
                 &(0..instance.r)
                     .flat_map(|i| {
-                        witness.cross_terms[i].pos
+                        witness.cross_terms[i]
+                            .pos
                             .iter()
                             .chain(&witness.cross_terms[i].neg)
                             .cloned()
@@ -108,12 +105,12 @@ impl<P: TEPair> Relation for UnrollRelation<P> {
     }
 }
 
-impl<P1: TEModelParameters> UnrolledBpWitness<P1> {
-    pub fn from_ipa<P: TEPair<P1 = P1>>(
+impl<G: Group> UnrolledBpWitness<G> {
+    pub fn from_ipa<C: TwoChain<G1 = G>>(
         k: usize,
-        instance: &IpaInstance<GroupProjective<P1>>,
-        witness: &IpaWitness<P1::ScalarField>,
-    ) -> (UnrolledBpInstance<P>, Self) {
+        instance: &IpaInstance<G>,
+        witness: &IpaWitness<G::ScalarField>,
+    ) -> (UnrolledBpInstance<C>, Self) {
         (
             UnrolledBpInstance {
                 k,
@@ -133,8 +130,8 @@ impl<P1: TEModelParameters> UnrolledBpWitness<P1> {
     }
 }
 
-impl<P: TEPair> UnrolledBpInstance<P> {
-    pub fn from_ipa(k: usize, instance: &IpaInstance<GroupProjective<P::P1>>) -> Self {
+impl<C: TwoChain> UnrolledBpInstance<C> {
+    pub fn from_ipa(k: usize, instance: &IpaInstance<C::G1>) -> Self {
         UnrolledBpInstance {
             k,
             r: 0,

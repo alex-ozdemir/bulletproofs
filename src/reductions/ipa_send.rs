@@ -1,6 +1,6 @@
 use crate::{
-    relations::ipa::{IpaRelation, IpaWitness},
     reductions::combinator::True,
+    relations::ipa::{IpaRelation, IpaWitness},
     FiatShamirRng, Reduction, Relation,
 };
 use ark_ec::group::Group;
@@ -47,15 +47,18 @@ impl<G: Group> Reduction for SendIpa<G> {
 
 #[cfg(test)]
 mod test {
-    use crate::{
-        test::test_reduction,
-        relations::ipa::{IpaInstance, IpaRelation},
-        Reduction,
-        Relation,
-    };
     use super::SendIpa;
+    use crate::{
+        relations::ipa::{IpaInstance, IpaRelation},
+        test::test_reduction,
+        Reduction, Relation,
+    };
     use ark_ec::group::Group;
-    fn test_ipa<G: Group, I: Reduction<From=IpaRelation<G>>>(sizes: Vec<usize>, reps: usize, i: I) {
+    fn test_ipa<G: Group, I: Reduction<From = IpaRelation<G>>>(
+        sizes: Vec<usize>,
+        reps: usize,
+        i: I,
+    ) {
         let rng = &mut ark_std::test_rng();
         for size in sizes {
             for _ in 0..reps {

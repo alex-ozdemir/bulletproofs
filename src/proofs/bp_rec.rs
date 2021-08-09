@@ -1,7 +1,7 @@
 use crate::{
-    relations::ipa::{IpaInstance, IpaRelation, IpaWitness, IpaGens},
+    relations::ipa::{IpaGens, IpaInstance, IpaRelation, IpaWitness},
     util::{ip, msm},
-    FiatShamirRng, Proof
+    FiatShamirRng, Proof,
 };
 use ark_ec::group::Group;
 use ark_ff::{Field, UniformRand};

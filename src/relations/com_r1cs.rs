@@ -98,8 +98,16 @@ impl<G: Group> Relation for ComR1csRelation<G> {
         let bz = mat_vec_mult(&x.r1cs.b, &z);
         let cz = mat_vec_mult(&x.r1cs.c, &z);
 
+        let abz = hadamard(&az, &bz);
+
+        for (i, (a, b)) in abz.iter().zip(&cz).enumerate() {
+            if a != b {
+                println!("Issue at {}:\n  {} v\n  {}", i, a, b);
+            }
+        }
+
         // Az * Bz = Cz (hadamard)
-        assert_eq!(&hadamard(&az, &bz), &cz);
+        assert_eq!(&abz, &cz);
 
         // check commitments
         for i in 0..x.r {

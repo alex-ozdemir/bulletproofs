@@ -1,7 +1,7 @@
 use crate::{
-    relations::ipa::{IpaInstance, IpaRelation, IpaWitness, IpaGens},
-    util::{ip, msm, scale_vec, sum_vecs, powers, zero_pad_to_multiple},
-    FiatShamirRng, Proof
+    relations::ipa::{IpaGens, IpaInstance, IpaRelation, IpaWitness},
+    util::{ip, msm, powers, scale_vec, sum_vecs, zero_pad_to_multiple},
+    FiatShamirRng, Proof,
 };
 use ark_ec::group::Group;
 use ark_ff::{Field, One, UniformRand};
@@ -195,12 +195,7 @@ impl<G: Group, B: Proof<IpaRelation<G>>> Proof<IpaRelation<G>> for KaryBp<G, B> 
         }
     }
 
-    fn verify(
-        &self,
-        instance: &IpaInstance<G>,
-        proof: &Self::Proof,
-        fs: &mut FiatShamirRng,
-    ) {
+    fn verify(&self, instance: &IpaInstance<G>, proof: &Self::Proof, fs: &mut FiatShamirRng) {
         match proof {
             BpProof::Base(base_proof) => self.base.verify(instance, base_proof, fs),
             BpProof::Rec {

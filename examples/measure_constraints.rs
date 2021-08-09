@@ -1,10 +1,9 @@
-use ark_bp::{r1cs::measure_constraints, curves::models::JubJubPair};
+use ark_bp::{curves::models::JubJubPair, r1cs::measure_constraints};
 use structopt::StructOpt;
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = "measure_constraints", about = "Constraint benchmarking")]
 struct Opt {
-
     /// Fixed-scalar MSM size
     #[structopt()]
     k: usize,
@@ -13,7 +12,6 @@ struct Opt {
     #[structopt()]
     m: usize,
 }
-
 
 fn main() {
     let opt = Opt::from_args();

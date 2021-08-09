@@ -1,5 +1,6 @@
 use vector_addition_chain::bos_coster_fast::build_chain;
 
+use ark_ec::group::Group;
 use ark_ec::models::twisted_edwards_extended::{GroupAffine, GroupProjective};
 use ark_ec::models::TEModelParameters;
 use ark_ec::ProjectiveCurve;
@@ -27,7 +28,9 @@ use ark_r1cs_std::fields::fp::FpVar;
 use ark_r1cs_std::{alloc::AllocationMode, eq::EqGadget};
 use ark_std::{end_timer, start_timer};
 
-pub fn known_scalar_msm<P: TEModelParameters>(
+use crate::curves::IncompleteOpsGadget;
+
+pub fn known_scalar_msm_twe<P: TEModelParameters>(
     scalars: Vec<P::ScalarField>,
     mut points: Vec<AffineVar<P, FpVar<P::BaseField>>>,
 ) -> AffineVar<P, FpVar<P::BaseField>>
@@ -59,6 +62,45 @@ where
     r
 }
 
+pub fn known_scalar_msm<
+    F: Field,
+    G: ProjectiveCurve,
+    GVar: CurveVar<G, F>,
+    I: IncompleteOpsGadget<F, G, GVar>,
+>(
+    scalars: Vec<G::ScalarField>,
+    mut points: Vec<GVar>,
+) -> GVar {
+    let t = start_timer!(|| "msm");
+    // special-case zero
+    let r = if points.len() == 0 {
+        GVar::zero()
+    } else {
+        let chain = timed!(|| "build_chain", build_chain(scalars.clone()));
+        // ~quadratic time..
+        //timed!(|| "check chain", check_chain(&chain, &scalars));
+        //println!(
+        //    "Additions per element: {}",
+        //    chain.adds.len() as f64 / scalars.len() as f64
+        //);
+        timed!(|| "embed chain", {
+            for (a, b) in &chain.adds {
+                let new = if a == b {
+                    // double
+                    <I as IncompleteOpsGadget<F, G, GVar>>::double(&points[*a])
+                } else {
+                    // add
+                    <I as IncompleteOpsGadget<F, G, GVar>>::add(&points[*a], &points[*b])
+                };
+                points.push(new);
+            }
+        });
+        points.pop().unwrap()
+    };
+    end_timer!(t);
+    r
+}
+
 pub struct KnownScalarMsm<P: TEModelParameters> {
     pub scalars: Vec<P::ScalarField>,
     pub points: Option<Vec<GroupAffine<P>>>,
@@ -80,7 +122,7 @@ where
                 Ok(v)
             })
             .collect::<Result<Vec<_>, _>>()?;
-        let result = known_scalar_msm(self.scalars.clone(), pts);
+        let result = known_scalar_msm_twe(self.scalars.clone(), pts);
         let ex_result = AffineVar::new_variable_omit_on_curve_check(
             ns!(cs, "point2"),
             || Ok(self.result.as_ref().unwrap().clone()),
@@ -91,7 +133,7 @@ where
     }
 }
 
-pub fn known_point_msm<P: TEModelParameters>(
+pub fn known_point_msm_twe<P: TEModelParameters>(
     scalar_bits: Vec<Vec<Boolean<P::BaseField>>>,
     points: &[GroupProjective<P>],
 ) -> AffineVar<P, FpVar<P::BaseField>>
@@ -110,10 +152,19 @@ where
     r
 }
 
-fn compute_point_powers<P: TEModelParameters>(
-    points: &[GroupProjective<P>],
-) -> Vec<Vec<GroupProjective<P>>> {
-    let scalar_bits = <P::ScalarField as PrimeField>::size_in_bits();
+pub fn known_point_msm<G: ProjectiveCurve, GVar: CurveVar<G, G::BaseField>>(
+    scalar_bits: Vec<Vec<Boolean<G::BaseField>>>,
+    points: &[G],
+) -> GVar {
+    let t = start_timer!(|| "pb_msm");
+    let point_powers = timed!(|| "point powers", compute_point_powers(points));
+    let r = GVar::precomputed_base_multiscalar_mul_le(&point_powers, scalar_bits.iter()).unwrap();
+    end_timer!(t);
+    r
+}
+
+fn compute_point_powers<G: Group>(points: &[G]) -> Vec<Vec<G>> {
+    let scalar_bits = <G::ScalarField as PrimeField>::size_in_bits();
     points
         .iter()
         .map(|p| {
@@ -214,7 +265,7 @@ mod test {
             })
             .unzip();
         let cs_before = cs.num_constraints();
-        let _msm = known_point_msm(scalar_bits, &points);
+        let _msm = known_point_msm_twe(scalar_bits, &points);
         assert!(cs.is_satisfied().unwrap());
         cs.num_constraints() - cs_before
     }
