@@ -26,6 +26,8 @@ blake2 = "0.9"
 rand = "0.8"
 ark-bls12-381 = "0.3"
 ark-ed-on-bls12-381 = "0.3"
+ark-pallas = "0.3"
+ark-vesta = "0.3"
 
 [dev-dependencies]
 

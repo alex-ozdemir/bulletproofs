@@ -1,3 +1,7 @@
+#![feature(test)]
+
+extern crate test as rust_test;
+
 pub type FiatShamirRng = ark_marlin::rng::FiatShamirRng<blake2::Blake2s>;
 
 pub mod curves;
@@ -70,7 +74,7 @@ pub mod test {
     }
 
     #[test]
-    fn test_bp_ipa() {
+    fn test_bp_ipa_bls_g1() {
         type G = <Bls12_381 as PairingEngine>::G1Projective;
         let i = bp_iter::Bp::<G>::default();
         test_ipa(vec![1, 2, 4, 8, 16], 1, i);
@@ -131,5 +135,56 @@ pub mod test {
         let v_fs_rng = &mut test_fs_rng();
         let pf = sys.prove(&x, &w, p_fs_rng);
         sys.verify(&x, &pf, v_fs_rng);
+    }
+
+    #[test]
+    fn test_bp_ipa_pallas() {
+        type G = ark_pallas::Projective;
+        let i = bp_iter::Bp::<G>::default();
+        test_ipa(vec![1, 2, 4, 8, 16], 1, i);
+    }
+
+    #[test]
+    fn test_bp_ipa_vesta() {
+        type G = ark_pallas::Projective;
+        let i = bp_iter::Bp::<G>::default();
+        test_ipa(vec![1, 2, 4, 8, 16], 1, i);
+    }
+
+    mod benches {
+        use super::*;
+        use rust_test::Bencher;
+
+        #[bench]
+        fn bp_ipa_bls_g1(b: &mut Bencher) {
+            let i = bp_iter::Bp::<<Bls12_381 as PairingEngine>::G1Projective>::default();
+            bench_ipa(16, i, b);
+        }
+
+        #[bench]
+        fn bp_ipa_pallas(b: &mut Bencher) {
+            let i = bp_iter::Bp::<ark_pallas::Projective>::default();
+            bench_ipa(16, i, b);
+        }
+
+        #[bench]
+        fn bp_ipa_vesta(b: &mut Bencher) {
+            let i = bp_iter::Bp::<ark_vesta::Projective>::default();
+            bench_ipa(16, i, b);
+        }
+
+
+        pub fn bench_ipa<G: Group, I: Proof<IpaRelation<G>>>(size: usize, i: I, b: &mut Bencher) {
+            let rng = &mut ark_std::test_rng();
+            let (instance, witness) = IpaInstance::<G>::sample_from_length(rng, size);
+            IpaRelation::check(&instance, &witness);
+            let fs_seed: [u8; 32] = rng.gen();
+            b.iter(|| {
+                let mut fs_rng = FiatShamirRng::from_seed(&fs_seed);
+                let proof = i.prove(&instance, &witness, &mut fs_rng);
+                let mut fs_rng = FiatShamirRng::from_seed(&fs_seed);
+                i.verify(&instance, &proof, &mut fs_rng);
+            })
+        }
     }
 }
