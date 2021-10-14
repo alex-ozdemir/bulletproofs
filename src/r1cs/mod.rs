@@ -9,12 +9,12 @@ use crate::{
 };
 use ark_ec::group::Group;
 use ark_ff::prelude::*;
-use ark_nonnative_field::{
-    AllocatedNonNativeFieldVar, NonNativeFieldMulResultVar, NonNativeFieldVar,
-};
 use ark_r1cs_std::{
     bits::ToBitsGadget,
     boolean::Boolean,
+    fields::nonnative::{
+        AllocatedNonNativeFieldVar, NonNativeFieldMulResultVar, NonNativeFieldVar,
+    },
     Assignment,
     {alloc::AllocationMode, eq::EqGadget},
 };
@@ -31,7 +31,7 @@ use std::marker::PhantomData;
 
 pub mod ip;
 pub mod msm;
-use msm::{known_point_msm, known_scalar_msm};
+use msm::{incomplete_known_point_msm, known_point_msm, known_scalar_msm};
 
 macro_rules! timed {
     ($label:expr, $val:expr) => {{
@@ -211,12 +211,11 @@ impl<C: TwoChain> ConstraintSynthesizer<C::LinkField> for BpRecCircuit<C> {
             Vec<Vec<Boolean<C::LinkField>>>,
         ) = (0..self.m)
             .map(|i| {
-                let (f, bits) = AllocatedNonNativeFieldVar::new_variable_alloc_le_bits(
-                    ns!(cs, "a"),
-                    || self.a.as_ref().map(|a| a[i].clone()).get(),
-                    AllocationMode::Witness,
-                )
-                .unwrap();
+                let (f, bits) =
+                    AllocatedNonNativeFieldVar::new_witness_with_le_bits(ns!(cs, "a"), || {
+                        self.a.as_ref().map(|a| a[i].clone()).get()
+                    })
+                    .unwrap();
                 (f.into(), bits)
             })
             .unzip();
@@ -225,12 +224,11 @@ impl<C: TwoChain> ConstraintSynthesizer<C::LinkField> for BpRecCircuit<C> {
             Vec<Vec<Boolean<C::LinkField>>>,
         ) = (0..self.m)
             .map(|i| {
-                let (f, bits) = AllocatedNonNativeFieldVar::new_variable_alloc_le_bits(
-                    ns!(cs, "b"),
-                    || self.b.as_ref().map(|b| b[i].clone()).get(),
-                    AllocationMode::Witness,
-                )
-                .unwrap();
+                let (f, bits) =
+                    AllocatedNonNativeFieldVar::new_witness_with_le_bits(ns!(cs, "b"), || {
+                        self.b.as_ref().map(|b| b[i].clone()).get()
+                    })
+                    .unwrap();
                 (f.into(), bits)
             })
             .unzip();
@@ -262,16 +260,20 @@ impl<C: TwoChain> ConstraintSynthesizer<C::LinkField> for BpRecCircuit<C> {
             points.extend_from_slice(&self.gen_b);
             scalars.push(ip_bits);
             points.push(self.q.clone());
-            known_point_msm(scalars, &points)
+            // TODO: randomize
+            let acc_val: C::G1 = C::G1::zero();
+            let acc = C::G1IncompleteOps::alloc_constant(ns!(cs, "acc"), &acc_val).unwrap();
+            incomplete_known_point_msm::<_, _, _, C::G1IncompleteOps>(acc, scalars, &points)
         });
 
         // compute p + <s, t>
         let lhs = timed!(|| "gen lhs", {
-            let st = known_scalar_msm::<C::LinkField, C::G1, C::G1Var, C::G1IncompleteOps>(
+            let p = C::G1IncompleteOps::alloc_constant(ns!(cs, "p"), &self.p).unwrap();
+            known_scalar_msm::<C::LinkField, C::G1, C::G1Var, C::G1IncompleteOps>(
+                p,
                 self.s.clone(),
                 t,
-            );
-            st + self.p
+            )
         });
         commit.enforce_equal(&lhs).unwrap();
 

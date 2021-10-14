@@ -44,7 +44,7 @@ dependencies = [
  "ark-ff",
  "ark-marlin",
  "ark-nonnative-field 0.3.1",
- "ark-r1cs-std",
+ "ark-r1cs-std 0.3.1",
  "ark-relations",
  "ark-std",
  "blake2",
@@ -167,7 +167,7 @@ checksum = "440ad4569974910adbeb84422b7e622b79e08d27142afd113785b7fcfb446186"
 dependencies = [
  "ark-ec",
  "ark-ff",
- "ark-r1cs-std",
+ "ark-r1cs-std 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "ark-relations",
  "ark-std",
  "derivative",
@@ -180,11 +180,10 @@ dependencies = [
 [[package]]
 name = "ark-nonnative-field"
 version = "0.3.1"
-source = "git+https://github.com/alex-ozdemir/nonnative.git?branch=alloc-bits#aa565a3b6c33cbf16f91e1185f0e6e6729fd1822"
 dependencies = [
  "ark-ec",
  "ark-ff",
- "ark-r1cs-std",
+ "ark-r1cs-std 0.3.1",
  "ark-relations",
  "ark-std",
  "derivative",
@@ -224,6 +223,21 @@ dependencies = [
  "derivative",
  "digest",
  "rayon",
+ "tracing",
+]
+
+[[package]]
+name = "ark-r1cs-std"
+version = "0.3.1"
+dependencies = [
+ "ark-ec",
+ "ark-ff",
+ "ark-relations",
+ "ark-std",
+ "derivative",
+ "num-bigint",
+ "num-integer",
+ "num-traits",
  "tracing",
 ]
 

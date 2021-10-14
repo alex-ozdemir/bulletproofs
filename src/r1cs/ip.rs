@@ -5,16 +5,17 @@ use ark_ec::models::twisted_edwards_extended::GroupAffine;
 use ark_ec::models::TEModelParameters;
 use ark_ec::AffineCurve;
 use ark_ff::prelude::*;
-use ark_nonnative_field::{
-    AllocatedNonNativeFieldVar, NonNativeFieldMulResultVar, NonNativeFieldVar,
-};
 use ark_r1cs_std::alloc::AllocVar;
 use ark_r1cs_std::boolean::Boolean;
 use ark_r1cs_std::fields::fp::FpVar;
 use ark_r1cs_std::groups::curves::twisted_edwards::AffineVar;
 use ark_r1cs_std::Assignment;
 use ark_r1cs_std::R1CSVar;
-use ark_r1cs_std::{alloc::AllocationMode, eq::EqGadget};
+use ark_r1cs_std::alloc::AllocationMode;
+use ark_r1cs_std::eq::EqGadget;
+use ark_r1cs_std::fields::nonnative::{
+    AllocatedNonNativeFieldVar, NonNativeFieldMulResultVar, NonNativeFieldVar,
+};
 use ark_relations::{
     lc, ns,
     r1cs::{

@@ -62,19 +62,15 @@ where
     r
 }
 
-pub fn known_scalar_msm<
-    F: Field,
-    G: ProjectiveCurve,
-    GVar: CurveVar<G, F>,
-    I: IncompleteOpsGadget<F, G, GVar>,
->(
+pub fn known_scalar_msm<F: Field, G: ProjectiveCurve, GVar, I: IncompleteOpsGadget<F, G, GVar>>(
+    acc: GVar,
     scalars: Vec<G::ScalarField>,
     mut points: Vec<GVar>,
 ) -> GVar {
     let t = start_timer!(|| "msm");
     // special-case zero
     let r = if points.len() == 0 {
-        GVar::zero()
+        acc
     } else {
         let chain = timed!(|| "build_chain", build_chain(scalars.clone()));
         // ~quadratic time..
@@ -95,7 +91,7 @@ pub fn known_scalar_msm<
                 points.push(new);
             }
         });
-        points.pop().unwrap()
+        <I as IncompleteOpsGadget<F, G, GVar>>::add(&points.pop().unwrap(), &acc)
     };
     end_timer!(t);
     r
@@ -150,6 +146,14 @@ where
         ).unwrap();
     end_timer!(t);
     r
+}
+
+pub fn incomplete_known_point_msm<F: Field, G: Clone, GVar, I: IncompleteOpsGadget<F, G, GVar>>(
+    acc: GVar,
+    scalars: Vec<Vec<Boolean<F>>>,
+    points: &[G],
+) -> GVar {
+    I::precomputed_base_multiscalar_mul_le(acc, &points, scalars.iter()).unwrap()
 }
 
 pub fn known_point_msm<G: ProjectiveCurve, GVar: CurveVar<G, G::BaseField>>(
@@ -255,13 +259,14 @@ mod test {
             Vec<Vec<Boolean<P::BaseField>>>,
         ) = (0..m)
             .map(|i| {
-                let (f, bits) = AllocatedNonNativeFieldVar::new_variable_alloc_le_bits(
+                let (f, bits) = AllocatedNonNativeFieldVar::new_witness_with_le_bits(
                     ns!(cs, "a"),
                     || Ok(scalars[i].clone()),
-                    AllocationMode::Witness,
+                    //AllocationMode::Witness,
                 )
                 .unwrap();
-                (f.into(), bits)
+                let b : Vec<Boolean<P::BaseField>> = bits;
+                (f.into(), b)
             })
             .unzip();
         let cs_before = cs.num_constraints();
