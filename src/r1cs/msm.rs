@@ -26,7 +26,7 @@ macro_rules! timed {
 
 use ark_r1cs_std::fields::fp::FpVar;
 use ark_r1cs_std::{alloc::AllocationMode, eq::EqGadget};
-use ark_std::{end_timer, start_timer};
+use ark_std::{end_timer, fmt::Debug, start_timer};
 
 use crate::curves::IncompleteOpsGadget;
 
@@ -62,7 +62,12 @@ where
     r
 }
 
-pub fn known_scalar_msm<F: Field, G: ProjectiveCurve, GVar, I: IncompleteOpsGadget<F, G, GVar>>(
+pub fn known_scalar_msm<
+    F: Field,
+    G: ProjectiveCurve,
+    GVar: Debug,
+    I: IncompleteOpsGadget<F, G, GVar>,
+>(
     acc: GVar,
     scalars: Vec<G::ScalarField>,
     mut points: Vec<GVar>,
@@ -148,7 +153,12 @@ where
     r
 }
 
-pub fn incomplete_known_point_msm<F: Field, G: Clone, GVar, I: IncompleteOpsGadget<F, G, GVar>>(
+pub fn incomplete_known_point_msm<
+    F: Field,
+    G: Clone,
+    GVar: Debug,
+    I: IncompleteOpsGadget<F, G, GVar>,
+>(
     acc: GVar,
     scalars: Vec<Vec<Boolean<F>>>,
     points: &[G],
@@ -187,6 +197,11 @@ fn compute_point_powers<G: Group>(points: &[G]) -> Vec<Vec<G>> {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::curves::{
+        models::{JubJubPair, PastaCycle},
+        SWCycleChain1,
+    };
+    use crate::curves::{IncompleteOpsGadget, TwoChain};
     use ark_ec::ModelParameters;
     use ark_nonnative_field::{AllocatedNonNativeFieldVar, NonNativeFieldVar};
     use ark_relations::r1cs::ConstraintSystem;
@@ -265,12 +280,48 @@ mod test {
                     //AllocationMode::Witness,
                 )
                 .unwrap();
-                let b : Vec<Boolean<P::BaseField>> = bits;
+                let b: Vec<Boolean<P::BaseField>> = bits;
                 (f.into(), b)
             })
             .unzip();
         let cs_before = cs.num_constraints();
         let _msm = known_point_msm_twe(scalar_bits, &points);
+        assert!(cs.is_satisfied().unwrap());
+        cs.num_constraints() - cs_before
+    }
+
+    fn incomplete_fb_msm_test<C: TwoChain>(m: usize) -> usize {
+        let rng = &mut ark_std::test_rng();
+        let cs: ConstraintSystemRef<C::LinkField> = ConstraintSystem::new_ref();
+        let points: Vec<_> = (0..m).map(|_| C::G1::rand(rng)).collect();
+        let scalars: Vec<_> = (0..m).map(|_| C::TopField::rand(rng)).collect();
+        let randomizer = C::G1::rand(rng);
+        let expected = crate::util::msm(&points, &scalars) + &randomizer;
+        let (_scalar_vars, scalar_bits): (
+            Vec<NonNativeFieldVar<C::TopField, C::LinkField>>,
+            Vec<Vec<Boolean<C::LinkField>>>,
+        ) = (0..m)
+            .map(|i| {
+                let (f, bits) = AllocatedNonNativeFieldVar::new_witness_with_le_bits(
+                    ns!(cs, "a"),
+                    || Ok(scalars[i].clone()),
+                    //AllocationMode::Witness,
+                )
+                .unwrap();
+                let b: Vec<Boolean<C::LinkField>> = bits;
+                (f.into(), b)
+            })
+            .unzip();
+        let cs_before = cs.num_constraints();
+        let rand_const = C::G1IncompleteOps::alloc_constant(ns!(cs, "c"), &randomizer).unwrap();
+        let msm = incomplete_known_point_msm::<_, _, _, C::G1IncompleteOps>(
+            rand_const,
+            scalar_bits,
+            &points,
+        );
+        assert!(cs.is_satisfied().unwrap());
+        let ex_const = C::G1IncompleteOps::alloc_constant(ns!(cs, "expect"), &expected).unwrap();
+        msm.enforce_equal(&ex_const).unwrap();
         assert!(cs.is_satisfied().unwrap());
         cs.num_constraints() - cs_before
     }
@@ -328,5 +379,19 @@ mod test {
         fit_linear::<ark_ed_on_bls12_381::EdwardsParameters, _>(
             fb_msm_test::<ark_ed_on_bls12_381::EdwardsParameters>,
         );
+    }
+
+    #[test]
+    fn fb_jubjub() {
+        incomplete_fb_msm_test::<JubJubPair>(1);
+        incomplete_fb_msm_test::<JubJubPair>(10);
+        incomplete_fb_msm_test::<JubJubPair>(100);
+    }
+    #[test]
+    fn fb_pasta() {
+        incomplete_fb_msm_test::<SWCycleChain1<PastaCycle>>(0);
+        incomplete_fb_msm_test::<SWCycleChain1<PastaCycle>>(1);
+        incomplete_fb_msm_test::<SWCycleChain1<PastaCycle>>(10);
+        incomplete_fb_msm_test::<SWCycleChain1<PastaCycle>>(100);
     }
 }

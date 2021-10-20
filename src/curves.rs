@@ -1,13 +1,12 @@
 use ark_ec::{
-    group::Group, models::short_weierstrass_jacobian::GroupAffine as SWGroupAffine,
-    models::short_weierstrass_jacobian::GroupProjective as SWGroupProjective,
+    group::Group, models::short_weierstrass_jacobian::GroupProjective as SWGroupProjective,
     models::twisted_edwards_extended::GroupProjective as TEGroupProjective, ModelParameters,
     ProjectiveCurve, SWModelParameters, TEModelParameters,
 };
 use ark_ff::prelude::*;
 use ark_r1cs_std::groups::curves::{
     short_weierstrass::non_zero_affine::NonZeroAffineVar as SwNzAffVar,
-    short_weierstrass::AffineVar as SWAffineVar, twisted_edwards::AffineVar as TEAffineVar,
+    twisted_edwards::AffineVar as TEAffineVar,
 };
 use ark_r1cs_std::{
     alloc::{AllocVar, AllocationMode},
@@ -21,6 +20,7 @@ use ark_r1cs_std::{
 };
 use ark_relations::r1cs::{Namespace, SynthesisError};
 use derivative::Derivative;
+use std::fmt::Debug;
 use std::marker::PhantomData;
 
 use ark_std::{end_timer, start_timer};
@@ -54,7 +54,7 @@ pub trait TwoChain {
     type P1: ModelParameters<BaseField = Self::LinkField>;
     type G1: ProjectiveCurve<ScalarField = Self::TopField, BaseField = Self::LinkField>
         + AffCoords<BaseField = Self::LinkField>;
-    type G1Var: EqGadget<Self::LinkField>;
+    type G1Var: EqGadget<Self::LinkField> + Debug + R1CSVar<Self::LinkField>;
     type G1IncompleteOps: IncompleteOpsGadget<Self::LinkField, Self::G1, Self::G1Var>;
     type G2: Group<ScalarField = Self::LinkField>;
     //fn known_point_msm(
@@ -73,7 +73,7 @@ pub trait AffCoords {
 }
 
 /// Gadget for an incomplete binary operation.
-pub trait IncompleteOpsGadget<F: Field, G: Clone, GVar> {
+pub trait IncompleteOpsGadget<F: Field, G: Clone, GVar: Debug> {
     /// Add two points that must
     /// * be non-equal
     /// * be non-zero
@@ -91,7 +91,7 @@ pub trait IncompleteOpsGadget<F: Field, G: Clone, GVar> {
     fn alloc_constant(cs: impl Into<Namespace<F>>, a: &G) -> Result<GVar, SynthesisError>;
 
     /// for ommiting checks that it is on the curve.
-    fn new_variable_omit_on_curve_check(
+    fn new_variable(
         cs: impl Into<Namespace<F>>,
         //cs: impl Into<Namespace<<G::BaseField as Field>::BasePrimeField>>,
         f: impl FnOnce() -> Result<G, SynthesisError>,
@@ -99,7 +99,7 @@ pub trait IncompleteOpsGadget<F: Field, G: Clone, GVar> {
     ) -> Result<GVar, SynthesisError>;
 
     /// Computes `base_point + scalar_bits * scalar_point`,
-    /// where `scalar_bits` is a little-endian (MSB first).
+    /// where `scalar_bits` is a little-endian (LSB at index 0).
     ///
     /// ## Incompleteness
     /// Let P be the base point, Q bit the scalar point, and b[i] a bits.
@@ -123,7 +123,7 @@ pub trait IncompleteOpsGadget<F: Field, G: Clone, GVar> {
         .take(n)
         .collect();
         for i in 0..n {
-            acc = Self::conditional_constant_add(&scalar_bits[n - i - 1], acc, &point_powers[i]);
+            acc = Self::conditional_constant_add(&scalar_bits[i], acc, &point_powers[i]);
         }
         Ok(acc)
     }
@@ -147,7 +147,7 @@ pub trait IncompleteOpsGadget<F: Field, G: Clone, GVar> {
 }
 
 pub mod models {
-    use super::{TEPair, SWCycleParameters};
+    use super::{SWCycleParameters, TEPair, SWCycleChain1, SWCycleChain2};
     pub struct JubJubPair;
 
     impl TEPair for JubJubPair {
@@ -162,6 +162,11 @@ pub mod models {
         type G1 = ark_pallas::Projective;
         type G2 = ark_vesta::Projective;
     }
+
+    /// Pasta-on-Vesta
+    pub type PastaPair = SWCycleChain1<PastaCycle>;
+    /// Vesta-on-Pallas
+    pub type VellasPair = SWCycleChain2<PastaCycle>;
 }
 
 #[derive(Derivative)]
@@ -191,11 +196,12 @@ impl<F: PrimeField, P: ModelParameters<BaseField = F> + TEModelParameters>
         unimplemented!()
     }
 
-    fn new_variable_omit_on_curve_check(
+    fn new_variable(
         cs: impl Into<Namespace<<P::BaseField as Field>::BasePrimeField>>,
         f: impl FnOnce() -> Result<TEGroupProjective<P>, SynthesisError>,
         mode: AllocationMode,
     ) -> Result<TEAffineVar<P, FpVar<F>>, SynthesisError> {
+        // TODO: breaks if removed!
         TEAffineVar::new_variable_omit_on_curve_check(cs, f, mode)
     }
     fn alloc_constant(
@@ -269,9 +275,15 @@ pub struct SWIncompleteAffOps<F: PrimeField, P: ModelParameters<BaseField = F> +
 );
 
 impl<F: PrimeField, P: ModelParameters<BaseField = F> + SWModelParameters>
-    IncompleteOpsGadget<F, SWGroupProjective<P>, SwNzAffVar<P, FpVar<F>>> for SWIncompleteAffOps<F, P>
+    IncompleteOpsGadget<F, SWGroupProjective<P>, SwNzAffVar<P, FpVar<F>>>
+    for SWIncompleteAffOps<F, P>
 {
     fn add(a: &SwNzAffVar<P, FpVar<F>>, b: &SwNzAffVar<P, FpVar<F>>) -> SwNzAffVar<P, FpVar<F>> {
+        a.value().map(|av| b.value().map(|bv| {
+            assert!(!av.is_zero());
+            assert!(!bv.is_zero());
+            assert!(!(av + bv).is_zero());
+        })).ok();
         a.add_unchecked(b).unwrap()
     }
     fn constant_double(x1: &SWGroupProjective<P>) -> SWGroupProjective<P> {
@@ -290,7 +302,7 @@ impl<F: PrimeField, P: ModelParameters<BaseField = F> + SWModelParameters>
         let sum = Self::add(&x0, &constant);
         CondSelectGadget::conditionally_select(&b, &sum, &x0).unwrap()
     }
-    fn new_variable_omit_on_curve_check(
+    fn new_variable(
         cs: impl Into<Namespace<<P::BaseField as Field>::BasePrimeField>>,
         f: impl FnOnce() -> Result<SWGroupProjective<P>, SynthesisError>,
         mode: AllocationMode,
@@ -299,12 +311,18 @@ impl<F: PrimeField, P: ModelParameters<BaseField = F> + SWModelParameters>
         let ns = cs.into();
         let x = FpVar::new_variable(ns.clone(), || f_res.map(|a| a.x), mode)?;
         let y = FpVar::new_variable(ns, || f_res.map(|a| a.y), mode)?;
+        if mode == AllocationMode::Witness {
+            let y2 = y.clone() * &y;
+            let x3 = x.clone() * &x * &x;
+            y2.enforce_equal(&(x3 + x.clone() * P::COEFF_A + P::COEFF_B))?;
+        }
         Ok(SwNzAffVar::new(x, y))
     }
     fn alloc_constant(
         cs: impl Into<Namespace<<P::BaseField as Field>::BasePrimeField>>,
         a: &SWGroupProjective<P>,
     ) -> Result<SwNzAffVar<P, FpVar<F>>, SynthesisError> {
+        assert!(!a.is_zero());
         let aff = a.into_affine();
         let ns = cs.into();
         let x = FpVar::new_constant(ns.clone(), aff.x)?;
@@ -328,12 +346,12 @@ pub trait TwoCycle {
     type G1: ProjectiveCurve<ScalarField = Self::ScalarField1, BaseField = Self::ScalarField2>
         + AffCoords<BaseField = Self::ScalarField2>;
 
-    type G1Var: EqGadget<Self::ScalarField2>;
+    type G1Var: EqGadget<Self::ScalarField2> + Debug + R1CSVar<Self::ScalarField2>;
     type G1IncompleteOps: IncompleteOpsGadget<Self::ScalarField2, Self::G1, Self::G1Var>;
     type P2: ModelParameters<BaseField = Self::ScalarField1>;
     type G2: ProjectiveCurve<ScalarField = Self::ScalarField2, BaseField = Self::ScalarField1>
         + AffCoords<BaseField = Self::ScalarField1>;
-    type G2Var: EqGadget<Self::ScalarField1>;
+    type G2Var: EqGadget<Self::ScalarField1> + Debug + R1CSVar<Self::ScalarField2>;
     type G2IncompleteOps: IncompleteOpsGadget<Self::ScalarField1, Self::G2, Self::G2Var>;
 }
 
@@ -380,3 +398,106 @@ where
     type G2 = <C as SWCycleParameters>::G1;
 }
 
+#[cfg(test)]
+mod test {
+    use super::*;
+    use ark_relations::{
+        ns,
+        r1cs::{
+            self, ConstraintLayer, ConstraintSynthesizer, ConstraintSystem, ConstraintSystemRef,
+            OptimizationGoal, TracingMode,
+        },
+    };
+    use tracing_subscriber::layer::SubscriberExt;
+    use rand::Rng;
+
+    struct Add<C: TwoChain> {
+        xs: Vec<C::G1>,
+    }
+
+    impl<C: TwoChain> Add<C> {
+        fn result(&self) -> C::G1 {
+            self.xs.iter().sum()
+        }
+        pub fn sample_from_length<R: Rng + ?Sized>(rng: &mut R, length: usize) -> Self {
+            Self {
+                xs: (0..length).map(|_| C::G1::rand(rng)).collect(),
+            }
+        }
+    }
+
+    impl<C: TwoChain> ConstraintSynthesizer<C::LinkField> for Add<C> {
+        fn generate_constraints(self, cs: ConstraintSystemRef<C::LinkField>) -> r1cs::Result<()> {
+            let mut pts = self
+                .xs
+                .iter()
+                .map(|pt| {
+                    C::G1IncompleteOps::new_variable(
+                        ns!(cs, "t alloc"),
+                        || Ok(pt.clone()),
+                        AllocationMode::Witness,
+                    )
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            let result = C::G1IncompleteOps::new_variable(
+                ns!(cs, "t alloc"),
+                || Ok(self.result()),
+                AllocationMode::Witness,
+            )?;
+            let mut acc = pts.pop().unwrap();
+            while pts.len() > 0 {
+                acc =
+                    <C::G1IncompleteOps as IncompleteOpsGadget<C::LinkField, C::G1, C::G1Var>>::add(
+                        &pts.pop().unwrap(),
+                        &acc,
+                    );
+            }
+            acc.enforce_equal(&result).unwrap();
+            Ok(())
+        }
+    }
+
+    fn test_add<C: TwoChain>(m: usize) {
+        let rng = &mut ark_std::test_rng();
+        let cir = Add::<C>::sample_from_length(rng, m);
+        let mut layer = ConstraintLayer::default();
+        layer.mode = TracingMode::OnlyConstraints;
+        let subscriber = tracing_subscriber::Registry::default().with(layer);
+        let _guard = tracing::subscriber::set_default(subscriber);
+        let cs: ConstraintSystemRef<C::LinkField> = ConstraintSystem::new_ref();
+        cs.set_optimization_goal(OptimizationGoal::Constraints);
+        cir.generate_constraints(cs.clone()).unwrap();
+        cs.finalize();
+        //for c in cs.constraint_names().unwrap() {
+        //    println!("  {}", c);
+        //}
+        println!("Constraints: {}", cs.num_constraints());
+        println!("Witness vars: {}", cs.num_witness_variables());
+        println!("Instance vars: {}", cs.num_instance_variables());
+        let constraints_per_m = cs.num_constraints() as f64 / m as f64;
+        println!("m: {}, Constraints per m: {}", m, constraints_per_m,);
+        assert!(cs.is_satisfied().unwrap());
+        println!("Checked");
+    }
+
+    #[test]
+    fn test_add_bls() {
+        test_add::<crate::curves::models::JubJubPair>(1);
+        test_add::<crate::curves::models::JubJubPair>(10);
+        test_add::<crate::curves::models::JubJubPair>(100);
+    }
+
+    #[test]
+    fn test_add_pallas() {
+        test_add::<crate::curves::SWCycleChain1<crate::curves::models::PastaCycle>>(1);
+        test_add::<crate::curves::SWCycleChain1<crate::curves::models::PastaCycle>>(10);
+        test_add::<crate::curves::SWCycleChain1<crate::curves::models::PastaCycle>>(100);
+    }
+
+    #[test]
+    fn test_add_vesta() {
+        test_add::<crate::curves::SWCycleChain2<crate::curves::models::PastaCycle>>(1);
+        test_add::<crate::curves::SWCycleChain2<crate::curves::models::PastaCycle>>(10);
+        test_add::<crate::curves::SWCycleChain2<crate::curves::models::PastaCycle>>(100);
+    }
+}

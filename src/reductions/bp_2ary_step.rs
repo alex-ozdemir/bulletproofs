@@ -151,4 +151,16 @@ mod test {
         let i = Bp2aryStep::<G>::default();
         test_ipa(vec![2, 4, 8, 16], 4, i);
     }
+    #[test]
+    fn test_pallas() {
+        type G = ark_pallas::Projective;
+        let i = Bp2aryStep::<G>::default();
+        test_ipa(vec![2, 4, 8, 16], 4, i);
+    }
+    #[test]
+    fn test_vesta() {
+        type G = ark_vesta::Projective;
+        let i = Bp2aryStep::<G>::default();
+        test_ipa(vec![2, 4, 8, 16], 4, i);
+    }
 }

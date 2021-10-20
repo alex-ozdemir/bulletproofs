@@ -31,7 +31,7 @@ use std::marker::PhantomData;
 
 pub mod ip;
 pub mod msm;
-use msm::{incomplete_known_point_msm, known_point_msm, known_scalar_msm};
+use msm::{incomplete_known_point_msm, known_scalar_msm};
 
 macro_rules! timed {
     ($label:expr, $val:expr) => {{
@@ -44,7 +44,9 @@ macro_rules! timed {
 
 /// The relation:
 ///
-/// p + <s, t> = <a, gen_a> + <b, gen_b> + <a,b> * q AND c = commit(t)
+///     p + <s, t> + randomizer
+///       = <a, gen_a> + <b, gen_b> + <a,b> * q + randomizer
+///     AND c = commit(t)
 ///
 /// where
 ///
@@ -71,14 +73,18 @@ pub struct BpRecCircuit<C: TwoChain> {
     /// Size m
     gen_b: Vec<C::G1>,
     q: C::G1,
+    /// The randomizer to add to both sides
+    randomizer: C::G1,
     _phants: PhantomData<C>,
 }
 
 impl<C: TwoChain> BpRecCircuit<C> {
-    pub fn from_ipa_witness(
+    pub fn from_ipa_witness<R: Rng>(
         instance: IpaInstance<C::G1>,
         witness: IpaWitness<C::TopField>,
+        rng: &mut R,
     ) -> Self {
+        let randomizer = C::G1::rand(rng);
         BpRecCircuit {
             k: 0,
             m: instance.gens.vec_size,
@@ -90,12 +96,14 @@ impl<C: TwoChain> BpRecCircuit<C> {
             gen_a: instance.gens.a_gens,
             gen_b: instance.gens.b_gens,
             q: instance.gens.ip_gen,
+            randomizer,
             _phants: Default::default(),
         }
     }
-    pub fn from_unrolled_bp_witness(
+    pub fn from_unrolled_bp_witness<R: Rng>(
         instance: UnrolledBpInstance<C>,
         witness: UnrolledBpWitness<C::G1>,
+        rng: &mut R,
     ) -> Self {
         // FS-MSM order: concat(rounds, concat(pos_terms) || concat(neg_terms))
         let t: Vec<C::G1> = witness
@@ -113,6 +121,7 @@ impl<C: TwoChain> BpRecCircuit<C> {
             })
             .collect();
         let k = (instance.k - 1) * instance.r * 2;
+        let randomizer = C::G1::rand(rng);
         assert_eq!(k, t.len());
         assert_eq!(k, s.len());
         BpRecCircuit {
@@ -126,10 +135,11 @@ impl<C: TwoChain> BpRecCircuit<C> {
             gen_a: instance.gens.a_gens,
             gen_b: instance.gens.b_gens,
             q: instance.gens.ip_gen,
+            randomizer,
             _phants: Default::default(),
         }
     }
-    pub fn from_unrolled_bp_instance(instance: UnrolledBpInstance<C>) -> Self {
+    pub fn from_unrolled_bp_instance<R: Rng>(instance: UnrolledBpInstance<C>, rng: &mut R) -> Self {
         let s: Vec<C::TopField> = instance
             .challs
             .iter()
@@ -141,6 +151,7 @@ impl<C: TwoChain> BpRecCircuit<C> {
             .collect();
         let k = (instance.k - 1) * instance.r * 2;
         assert_eq!(k, s.len());
+        let randomizer = C::G1::rand(rng);
         BpRecCircuit {
             k,
             m: instance.gens.vec_size,
@@ -152,6 +163,7 @@ impl<C: TwoChain> BpRecCircuit<C> {
             gen_a: instance.gens.a_gens,
             gen_b: instance.gens.b_gens,
             q: instance.gens.ip_gen,
+            randomizer,
             _phants: Default::default(),
         }
     }
@@ -164,6 +176,7 @@ impl<C: TwoChain> BpRecCircuit<C> {
         let a: Vec<_> = vec![C::TopField::zero(); m];
         let b = a.clone();
         let zeros = vec![zero.into(); k];
+        let randomizer = C::G1::rand(rng);
         BpRecCircuit {
             k,
             m,
@@ -175,8 +188,38 @@ impl<C: TwoChain> BpRecCircuit<C> {
             gen_a,
             gen_b,
             q: zero,
+            randomizer,
             _phants: Default::default(),
         }
+    }
+    pub fn rhs(&self) -> Option<C::G1> {
+        let gens = self
+            .gen_a
+            .iter()
+            .chain(self.gen_b.iter())
+            .chain(vec![&self.q])
+            .cloned()
+            .collect::<Vec<_>>();
+        let ip = crate::util::ip(self.a.as_ref()?, self.b.as_ref()?);
+        let scalars = self
+            .a
+            .as_ref()?
+            .iter()
+            .chain(self.b.as_ref()?.iter())
+            .chain([ip].iter())
+            .cloned()
+            .collect::<Vec<_>>();
+        Some(crate::util::msm(&gens, &scalars) + self.randomizer)
+    }
+    pub fn lhs(&self) -> Option<C::G1> {
+        Some(self.p.clone() + crate::util::msm(self.t.as_ref()?, &self.s) + self.randomizer)
+    }
+    pub fn check(&self) {
+        self.lhs().map(|l| {
+            self.rhs().map(|r| {
+                assert_eq!(l, r);
+            })
+        });
     }
 }
 
@@ -197,9 +240,7 @@ impl<C: TwoChain> ConstraintSynthesizer<C::LinkField> for BpRecCircuit<C> {
         let alloc_timer = start_timer!(|| "allocations");
         let t: Vec<C::G1Var> = (0..self.k)
             .map(|i| {
-                // TODO: check!
-                //C::G1Var::new_variable_omit_prime_order_check(
-                C::G1IncompleteOps::new_variable_omit_on_curve_check(
+                C::G1IncompleteOps::new_variable(
                     ns!(cs, "t alloc"),
                     || self.t.as_ref().map(|a| a[i].clone()).get(),
                     AllocationMode::Witness,
@@ -260,15 +301,14 @@ impl<C: TwoChain> ConstraintSynthesizer<C::LinkField> for BpRecCircuit<C> {
             points.extend_from_slice(&self.gen_b);
             scalars.push(ip_bits);
             points.push(self.q.clone());
-            // TODO: randomize
-            let acc_val: C::G1 = C::G1::zero();
+            let acc_val: C::G1 = self.randomizer.clone();
             let acc = C::G1IncompleteOps::alloc_constant(ns!(cs, "acc"), &acc_val).unwrap();
             incomplete_known_point_msm::<_, _, _, C::G1IncompleteOps>(acc, scalars, &points)
         });
 
         // compute p + <s, t>
         let lhs = timed!(|| "gen lhs", {
-            let p = C::G1IncompleteOps::alloc_constant(ns!(cs, "p"), &self.p).unwrap();
+            let p = C::G1IncompleteOps::alloc_constant(ns!(cs, "p+rand"), &(self.p.clone() + &self.randomizer)).unwrap();
             known_scalar_msm::<C::LinkField, C::G1, C::G1Var, C::G1IncompleteOps>(
                 p,
                 self.s.clone(),
@@ -296,7 +336,9 @@ pub fn measure_constraints<C: TwoChain, R: Rng>(k: usize, m: usize, rng: &mut R)
 mod test {
     use super::*;
     use crate::{
-        curves::models::JubJubPair, reductions::ipa_to_bp_unroll::IpaToBpUnroll, Reduction,
+        curves::models::{JubJubPair, PastaPair, VellasPair},
+        reductions::ipa_to_bp_unroll::IpaToBpUnroll, relations::ipa::IpaRelation, Reduction,
+        Relation,
     };
     use ark_ec::ModelParameters;
     use ark_relations::r1cs::ConstraintSystem;
@@ -307,7 +349,9 @@ mod test {
     fn ipa_check<C: TwoChain>(m: usize) {
         let rng = &mut ark_std::test_rng();
         let (instance, witness) = IpaInstance::<C::G1>::sample_from_length(rng, m);
-        let rec_relation = BpRecCircuit::<C>::from_ipa_witness(instance, witness);
+        IpaRelation::check(&instance, &witness);
+        let rec_relation = BpRecCircuit::<C>::from_ipa_witness(instance, witness, rng);
+        rec_relation.check();
         let mut layer = ConstraintLayer::default();
         layer.mode = TracingMode::OnlyConstraints;
         let subscriber = tracing_subscriber::Registry::default().with(layer);
@@ -338,6 +382,22 @@ mod test {
         ipa_check::<JubJubPair>(4);
     }
 
+    #[test]
+    fn pasta_ipa_test() {
+        ipa_check::<PastaPair>(1);
+        ipa_check::<PastaPair>(2);
+        ipa_check::<PastaPair>(3);
+        ipa_check::<PastaPair>(4);
+    }
+
+    #[test]
+    fn vellas_ipa_test() {
+        ipa_check::<VellasPair>(1);
+        ipa_check::<VellasPair>(2);
+        ipa_check::<VellasPair>(3);
+        ipa_check::<VellasPair>(4);
+    }
+
     fn unroll_check<C: TwoChain>(init_size: usize, k: usize, r: usize) {
         println!(
             "doing a unrolled circuit check with {} elems, k: {}, r: {}",
@@ -349,7 +409,7 @@ mod test {
         let (instance, witness) = IpaInstance::<C::G1>::sample_from_length(rng, init_size);
         let reducer = IpaToBpUnroll::<C>::new(k, r);
         let (_proof, u_instance, u_witness) = reducer.prove(&instance, &witness, &mut fs_rng);
-        let rec_relation = BpRecCircuit::from_unrolled_bp_witness(u_instance, u_witness);
+        let rec_relation = BpRecCircuit::from_unrolled_bp_witness(u_instance, u_witness, rng);
         println!(
             "R1CS FB-MSM size: {}, IP & commit size: {}",
             rec_relation.k, rec_relation.m
@@ -386,4 +446,14 @@ mod test {
         unroll_check::<JubJubPair>(2048, 4, 4);
         unroll_check::<JubJubPair>(2048, 4, 5);
     }
+
+    #[test]
+    fn pasta_unroll() {
+        unroll_check::<PastaPair>(4, 2, 1);
+        unroll_check::<PastaPair>(8, 2, 2);
+        unroll_check::<PastaPair>(8, 2, 3);
+        unroll_check::<PastaPair>(9, 3, 1);
+        unroll_check::<PastaPair>(9, 3, 2);
+    }
+
 }

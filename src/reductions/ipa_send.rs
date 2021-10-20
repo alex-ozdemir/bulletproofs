@@ -74,4 +74,16 @@ mod test {
         let i = SendIpa::<G>::default();
         test_ipa(vec![1], 4, i);
     }
+    #[test]
+    fn test_pallas() {
+        type G = ark_pallas::Projective;
+        let i = SendIpa::<G>::default();
+        test_ipa(vec![1], 4, i);
+    }
+    #[test]
+    fn test_vesta() {
+        type G = ark_vesta::Projective;
+        let i = SendIpa::<G>::default();
+        test_ipa(vec![1], 4, i);
+    }
 }

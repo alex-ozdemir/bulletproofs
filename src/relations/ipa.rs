@@ -27,7 +27,7 @@ impl<G: Group> IpaGens<G> {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct IpaInstance<G: Group> {
     pub gens: IpaGens<G>,
     pub result: G,
@@ -51,7 +51,7 @@ impl<G: Group> IpaInstance<G> {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct IpaWitness<F: Field> {
     pub a: Vec<F>,
     pub b: Vec<F>,
@@ -67,7 +67,7 @@ impl<F: Field> IpaWitness<F> {
 }
 
 impl<F: Field> IpaWitness<F> {
-    fn ip(&self) -> F {
+    pub fn ip(&self) -> F {
         self.a
             .iter()
             .zip(&self.b)
