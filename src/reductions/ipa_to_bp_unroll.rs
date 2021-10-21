@@ -1,5 +1,5 @@
 use crate::{
-    curves::TwoChain,
+    curves::Pair,
     relations::{
         bp_unroll::{CrossTerms, UnrollRelation, UnrolledBpInstance, UnrolledBpWitness},
         ipa::IpaRelation,
@@ -14,13 +14,13 @@ use ark_ec::group::Group;
 use ark_ff::{One, UniformRand};
 use std::marker::PhantomData;
 
-pub struct IpaToBpUnroll<C: TwoChain> {
+pub struct IpaToBpUnroll<C: Pair> {
     pub k: usize,
     pub r: usize,
     pub _phants: PhantomData<C>,
 }
 
-impl<C: TwoChain> IpaToBpUnroll<C> {
+impl<C: Pair> IpaToBpUnroll<C> {
     pub fn new(k: usize, r: usize) -> Self {
         Self {
             k,
@@ -30,7 +30,7 @@ impl<C: TwoChain> IpaToBpUnroll<C> {
     }
 }
 
-impl<C: TwoChain> Reduction for IpaToBpUnroll<C> {
+impl<C: Pair> Reduction for IpaToBpUnroll<C> {
     type From = IpaRelation<C::G1>;
     type To = UnrollRelation<C>;
     /// The commitments
@@ -61,7 +61,7 @@ impl<C: TwoChain> Reduction for IpaToBpUnroll<C> {
     }
 }
 
-pub fn prove_unroll<C: TwoChain>(
+pub fn prove_unroll<C: Pair>(
     r: usize,
     instance: &mut UnrolledBpInstance<C>,
     witness: &mut UnrolledBpWitness<C::G1>,
@@ -72,7 +72,7 @@ pub fn prove_unroll<C: TwoChain>(
     }
 }
 
-pub fn prove_step<C: TwoChain>(
+pub fn prove_step<C: Pair>(
     instance: &mut UnrolledBpInstance<C>,
     witness: &mut UnrolledBpWitness<C::G1>,
     fs: &mut FiatShamirRng,
@@ -184,7 +184,7 @@ pub fn prove_step<C: TwoChain>(
     witness.b = b_next;
 }
 
-pub fn verify_unroll<C: TwoChain>(
+pub fn verify_unroll<C: Pair>(
     r: usize,
     instance: &mut UnrolledBpInstance<C>,
     pf: &[C::G2],
@@ -196,7 +196,7 @@ pub fn verify_unroll<C: TwoChain>(
     }
 }
 
-pub fn verify_step<C: TwoChain>(
+pub fn verify_step<C: Pair>(
     instance: &mut UnrolledBpInstance<C>,
     commit: &C::G2,
     fs: &mut FiatShamirRng,
@@ -246,12 +246,12 @@ pub fn verify_step<C: TwoChain>(
 mod test {
     use super::*;
     use crate::{
-        curves::{models::{PastaPair, VellasPair, JubJubPair}, TwoChain},
+        curves::{models::{PastaPair, VellasPair, JubJubPair}, Pair},
         reductions::ipa_to_bp_unroll::IpaToBpUnroll,
         relations::ipa::IpaInstance,
     };
     use rand::Rng;
-    fn unroll_check<C: TwoChain>(init_size: usize, k: usize, r: usize) {
+    fn unroll_check<C: Pair>(init_size: usize, k: usize, r: usize) {
         println!(
             "doing a unrolled circuit check with {} elems, k: {}, r: {}",
             init_size, k, r

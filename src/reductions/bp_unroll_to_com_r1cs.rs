@@ -1,5 +1,5 @@
 use crate::{
-    curves::TwoChain,
+    curves::Pair,
     r1cs::BpRecCircuit,
     relations::{
         bp_unroll::UnrollRelation,
@@ -18,7 +18,7 @@ use std::marker::PhantomData;
 #[derivative(Default(bound = ""))]
 pub struct UnrollToComR1cs<C>(pub PhantomData<C>);
 
-impl<C: TwoChain> Reduction for UnrollToComR1cs<C> {
+impl<C: Pair> Reduction for UnrollToComR1cs<C> {
     type From = UnrollRelation<C>;
     type To = ComR1csRelation<C::G2>;
     type Proof = ();
@@ -115,13 +115,13 @@ mod test {
     use crate::{
         curves::{
             models::{JubJubPair, PastaPair, VellasPair},
-            TwoChain,
+            Pair,
         },
         reductions::{bp_unroll_to_com_r1cs::UnrollToComR1cs, ipa_to_bp_unroll::IpaToBpUnroll},
         relations::{com_r1cs::ComR1csRelation, ipa::IpaInstance},
     };
     use rand::Rng;
-    fn test_from_bp_unroll<C: TwoChain>(init_size: usize, k: usize, r: usize) {
+    fn test_from_bp_unroll<C: Pair>(init_size: usize, k: usize, r: usize) {
         println!(
             "doing a unrolled circuit check with {} elems, k: {}, r: {}",
             init_size, k, r

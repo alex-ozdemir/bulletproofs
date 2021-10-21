@@ -1,6 +1,6 @@
 //! R1CS relations for BP recursions
 use crate::{
-    curves::{IncompleteOpsGadget, TwoChain},
+    curves::{IncompleteOpsGadget, Pair},
     relations::{
         bp_unroll::{UnrolledBpInstance, UnrolledBpWitness},
         ipa::{IpaInstance, IpaWitness},
@@ -56,7 +56,7 @@ macro_rules! timed {
 /// Some other machinery will check
 ///
 /// c = commit(t)
-pub struct BpRecCircuit<C: TwoChain> {
+pub struct BpRecCircuit<C: Pair> {
     k: usize,
     m: usize,
     p: C::G1,
@@ -78,7 +78,7 @@ pub struct BpRecCircuit<C: TwoChain> {
     _phants: PhantomData<C>,
 }
 
-impl<C: TwoChain> BpRecCircuit<C> {
+impl<C: Pair> BpRecCircuit<C> {
     pub fn from_ipa_witness<R: Rng>(
         instance: IpaInstance<C::G1>,
         witness: IpaWitness<C::TopField>,
@@ -223,7 +223,7 @@ impl<C: TwoChain> BpRecCircuit<C> {
     }
 }
 
-impl<C: TwoChain> BpRecCircuit<C> {
+impl<C: Pair> BpRecCircuit<C> {
     fn check_sizes(&self) {
         assert_eq!(self.k, self.s.len());
         assert_eq!(self.m, self.gen_a.len());
@@ -234,7 +234,7 @@ impl<C: TwoChain> BpRecCircuit<C> {
     }
 }
 
-impl<C: TwoChain> ConstraintSynthesizer<C::LinkField> for BpRecCircuit<C> {
+impl<C: Pair> ConstraintSynthesizer<C::LinkField> for BpRecCircuit<C> {
     fn generate_constraints(self, cs: ConstraintSystemRef<C::LinkField>) -> r1cs::Result<()> {
         self.check_sizes();
         let alloc_timer = start_timer!(|| "allocations");
@@ -326,7 +326,7 @@ impl<C: TwoChain> ConstraintSynthesizer<C::LinkField> for BpRecCircuit<C> {
     }
 }
 
-pub fn measure_constraints<C: TwoChain, R: Rng>(k: usize, m: usize, rng: &mut R) -> usize {
+pub fn measure_constraints<C: Pair, R: Rng>(k: usize, m: usize, rng: &mut R) -> usize {
     let circ = BpRecCircuit::<C>::sized_instance(k, m, rng);
     let cs: ConstraintSystemRef<<C::G2 as Group>::ScalarField> = ConstraintSystem::new_ref();
     cs.set_optimization_goal(OptimizationGoal::Constraints);
@@ -349,7 +349,7 @@ mod test {
     use rand::Rng;
     use tracing_subscriber::layer::SubscriberExt;
 
-    fn ipa_check<C: TwoChain>(m: usize) {
+    fn ipa_check<C: Pair>(m: usize) {
         let rng = &mut ark_std::test_rng();
         let (instance, witness) = IpaInstance::<C::G1>::sample_from_length(rng, m);
         IpaRelation::check(&instance, &witness);
@@ -401,7 +401,7 @@ mod test {
         ipa_check::<VellasPair>(4);
     }
 
-    fn unroll_check<C: TwoChain>(init_size: usize, k: usize, r: usize) {
+    fn unroll_check<C: Pair>(init_size: usize, k: usize, r: usize) {
         println!(
             "doing a unrolled circuit check with {} elems, k: {}, r: {}",
             init_size, k, r

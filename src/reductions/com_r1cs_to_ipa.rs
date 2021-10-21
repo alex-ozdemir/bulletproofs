@@ -220,7 +220,7 @@ impl<G: Group> Reduction for ComR1csToIpa<G> {
 mod test {
     use super::*;
     use crate::{
-        curves::{models::{JubJubPair, PastaPair, VellasPair}, TwoChain},
+        curves::{models::{JubJubPair, PastaPair, VellasPair}, Pair},
         reductions::{
             bp_unroll_to_com_r1cs::UnrollToComR1cs, com_r1cs_to_ipa::ComR1csToIpa,
             ipa_to_bp_unroll::IpaToBpUnroll,
@@ -229,7 +229,7 @@ mod test {
         relations::bp_unroll::UnrollRelation,
     };
     use rand::Rng;
-    fn test_from_bp_unroll<C: TwoChain>(init_size: usize, k: usize, r: usize)
+    fn test_from_bp_unroll<C: Pair>(init_size: usize, k: usize, r: usize)
     {
         println!(
             "doing a unrolled circuit check with {} elems, k: {}, r: {}",

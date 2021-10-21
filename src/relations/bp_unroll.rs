@@ -1,6 +1,6 @@
 use super::ipa::{IpaGens, IpaInstance, IpaWitness};
 use crate::{
-    curves::{AffCoords, TwoChain},
+    curves::{AffCoords, Pair},
     util::{msm, neg_powers, powers, CollectIter},
     Relation,
 };
@@ -18,7 +18,7 @@ use std::marker::PhantomData;
 )]
 /// Represents the predicate that must be proved after unrolling the k-ary BP protocol for r rounds
 /// with the prover committing to the cross-terms in each round.
-pub struct UnrolledBpInstance<C: TwoChain> {
+pub struct UnrolledBpInstance<C: Pair> {
     /// Number of chunks per round
     pub k: usize,
     /// Number of rounds
@@ -66,9 +66,9 @@ pub struct UnrolledBpWitness<G: Group> {
     pub cross_terms: Vec<CrossTerms<G>>,
 }
 
-pub struct UnrollRelation<C: TwoChain>(pub PhantomData<C>);
+pub struct UnrollRelation<C: Pair>(pub PhantomData<C>);
 
-impl<C: TwoChain> Relation for UnrollRelation<C> {
+impl<C: Pair> Relation for UnrollRelation<C> {
     type Inst = UnrolledBpInstance<C>;
     type Wit = UnrolledBpWitness<C::G1>;
     fn check(instance: &Self::Inst, witness: &Self::Wit) {
@@ -106,7 +106,7 @@ impl<C: TwoChain> Relation for UnrollRelation<C> {
 }
 
 impl<G: Group> UnrolledBpWitness<G> {
-    pub fn from_ipa<C: TwoChain<G1 = G>>(
+    pub fn from_ipa<C: Pair<G1 = G>>(
         k: usize,
         instance: &IpaInstance<G>,
         witness: &IpaWitness<G::ScalarField>,
@@ -130,7 +130,7 @@ impl<G: Group> UnrolledBpWitness<G> {
     }
 }
 
-impl<C: TwoChain> UnrolledBpInstance<C> {
+impl<C: Pair> UnrolledBpInstance<C> {
     pub fn from_ipa(k: usize, instance: &IpaInstance<C::G1>) -> Self {
         UnrolledBpInstance {
             k,

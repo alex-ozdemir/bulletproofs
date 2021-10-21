@@ -201,7 +201,7 @@ mod test {
         models::{JubJubPair, PastaCycle},
         SWCycleChain1,
     };
-    use crate::curves::{IncompleteOpsGadget, TwoChain};
+    use crate::curves::{IncompleteOpsGadget, Pair};
     use ark_ec::ModelParameters;
     use ark_nonnative_field::{AllocatedNonNativeFieldVar, NonNativeFieldVar};
     use ark_relations::r1cs::ConstraintSystem;
@@ -290,7 +290,7 @@ mod test {
         cs.num_constraints() - cs_before
     }
 
-    fn incomplete_fb_msm_test<C: TwoChain>(m: usize) -> usize {
+    fn incomplete_fb_msm_test<C: Pair>(m: usize) -> usize {
         let rng = &mut ark_std::test_rng();
         let cs: ConstraintSystemRef<C::LinkField> = ConstraintSystem::new_ref();
         let points: Vec<_> = (0..m).map(|_| C::G1::rand(rng)).collect();

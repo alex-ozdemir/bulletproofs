@@ -33,6 +33,7 @@ macro_rules! timed {
         val
     }};
 }
+
 pub trait TEPair {
     type P1: TEModelParameters;
     type G2: Group<ScalarField = <Self::P1 as ModelParameters>::BaseField>;
@@ -48,7 +49,7 @@ pub trait TEPair {
 /// * a known-scalar MSM gadget for G1 points.
 /// * a known-point MSM gadget for G1 points.
 /// *
-pub trait TwoChain {
+pub trait Pair {
     type TopField: PrimeField;
     type LinkField: PrimeField;
     type P1: ModelParameters<BaseField = Self::LinkField>;
@@ -149,7 +150,7 @@ pub trait IncompleteOpsGadget<F: Field, G: Clone, GVar: Debug> {
 }
 
 pub mod models {
-    use super::{SWCycleParameters, TEPair, SWCycleChain1, SWCycleChain2};
+    use super::{SWCycleChain1, SWCycleChain2, SWCycleParameters, TEPair};
     pub struct JubJubPair;
 
     impl TEPair for JubJubPair {
@@ -262,7 +263,7 @@ impl<P: TEModelParameters> AffCoords for TEGroupProjective<P> {
     }
 }
 
-impl<P: TEPair> TwoChain for P
+impl<P: TEPair> Pair for P
 where
     <P::P1 as ModelParameters>::BaseField: PrimeField,
 {
@@ -286,11 +287,15 @@ impl<F: PrimeField, P: ModelParameters<BaseField = F> + SWModelParameters>
     for SWIncompleteAffOps<F, P>
 {
     fn add(a: &SwNzAffVar<P, FpVar<F>>, b: &SwNzAffVar<P, FpVar<F>>) -> SwNzAffVar<P, FpVar<F>> {
-        a.value().map(|av| b.value().map(|bv| {
-            assert!(!av.is_zero());
-            assert!(!bv.is_zero());
-            assert!(!(av + bv).is_zero());
-        })).ok();
+        a.value()
+            .map(|av| {
+                b.value().map(|bv| {
+                    assert!(!av.is_zero());
+                    assert!(!bv.is_zero());
+                    assert!(!(av + bv).is_zero());
+                })
+            })
+            .ok();
         a.add_unchecked(b).unwrap()
     }
     fn constant_double(x1: &SWGroupProjective<P>) -> SWGroupProjective<P> {
@@ -332,7 +337,10 @@ impl<F: PrimeField, P: ModelParameters<BaseField = F> + SWModelParameters>
         let x = FpVar::new_variable(ns.clone(), || f_res.map(|a| a.x), mode)?;
         let y = FpVar::new_variable(ns.clone(), || f_res.map(|a| a.y), mode)?;
         if let (Ok(x), Ok(y)) = (x.value(), y.value()) {
-            assert_eq!((x.clone() * &x * &x) + P::COEFF_A * x + P::COEFF_B, y.clone() * &y);
+            assert_eq!(
+                (x.clone() * &x * &x) + P::COEFF_A * x + P::COEFF_B,
+                y.clone() * &y
+            );
         }
         Ok(SwNzAffVar::new(x, y))
     }
@@ -389,7 +397,7 @@ impl<P: SWModelParameters> AffCoords for SWGroupProjective<P> {
 }
 
 pub struct SWCycleChain1<C: SWCycleParameters>(pub PhantomData<C>);
-impl<C: SWCycleParameters> TwoChain for SWCycleChain1<C>
+impl<C: SWCycleParameters> Pair for SWCycleChain1<C>
 where
     <C::P1 as ModelParameters>::BaseField: PrimeField,
 {
@@ -403,7 +411,7 @@ where
 }
 
 pub struct SWCycleChain2<C: SWCycleParameters>(pub PhantomData<C>);
-impl<C: SWCycleParameters> TwoChain for SWCycleChain2<C>
+impl<C: SWCycleParameters> Pair for SWCycleChain2<C>
 where
     <C::P2 as ModelParameters>::BaseField: PrimeField,
 {
@@ -426,14 +434,14 @@ mod test {
             OptimizationGoal, TracingMode,
         },
     };
-    use tracing_subscriber::layer::SubscriberExt;
     use rand::Rng;
+    use tracing_subscriber::layer::SubscriberExt;
 
-    struct Add<C: TwoChain> {
+    struct Add<C: Pair> {
         xs: Vec<C::G1>,
     }
 
-    impl<C: TwoChain> Add<C> {
+    impl<C: Pair> Add<C> {
         fn result(&self) -> C::G1 {
             self.xs.iter().sum()
         }
@@ -444,7 +452,7 @@ mod test {
         }
     }
 
-    impl<C: TwoChain> ConstraintSynthesizer<C::LinkField> for Add<C> {
+    impl<C: Pair> ConstraintSynthesizer<C::LinkField> for Add<C> {
         fn generate_constraints(self, cs: ConstraintSystemRef<C::LinkField>) -> r1cs::Result<()> {
             let mut pts = self
                 .xs
@@ -475,7 +483,7 @@ mod test {
         }
     }
 
-    fn test_add<C: TwoChain>(m: usize) {
+    fn test_add<C: Pair>(m: usize) {
         let rng = &mut ark_std::test_rng();
         let cir = Add::<C>::sample_from_length(rng, m);
         let mut layer = ConstraintLayer::default();

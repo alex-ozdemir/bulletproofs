@@ -1,5 +1,5 @@
 use crate::{
-    curves::TwoChain,
+    curves::Pair,
     reductions::combinator::{RepeatWhile, Sequence, TrueReductionToProof},
     reductions::{
         bp_2ary_step::Bp2aryStep, bp_unroll_to_com_r1cs::UnrollToComR1cs,
@@ -16,7 +16,7 @@ use crate::{
 /// * proves that via the classic bulletproofs.
 ///
 /// Defined using [crate::Reduction] combinators.
-pub fn llbp<C: TwoChain>(k: usize, r: usize) -> impl Proof<IpaRelation<C::G1>>
+pub fn llbp<C: Pair>(k: usize, r: usize) -> impl Proof<IpaRelation<C::G1>>
 {
     TrueReductionToProof::new(Sequence::new(
         Sequence::new(
