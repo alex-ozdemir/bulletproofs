@@ -107,6 +107,7 @@ impl<G: Group> Relation for ComR1csRelation<G> {
         }
 
         // Az * Bz = Cz (hadamard)
+        // AO: May fail b/c a commitment is not first!
         assert_eq!(&abz, &cz);
 
         // check commitments

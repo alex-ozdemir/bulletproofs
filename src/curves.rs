@@ -98,6 +98,8 @@ pub trait IncompleteOpsGadget<F: Field, G: Clone, GVar: Debug> {
         mode: AllocationMode,
     ) -> Result<GVar, SynthesisError>;
 
+    fn enforce_on_curve(pt: &GVar) -> Result<(), SynthesisError>;
+
     /// Computes `base_point + scalar_bits * scalar_point`,
     /// where `scalar_bits` is a little-endian (LSB at index 0).
     ///
@@ -194,6 +196,11 @@ impl<F: PrimeField, P: ModelParameters<BaseField = F> + TEModelParameters>
     ) -> TEAffineVar<P, FpVar<F>> {
         // We stub out the MSM, so this does not matter.
         unimplemented!()
+    }
+
+    fn enforce_on_curve(_pt: &TEAffineVar<P, FpVar<F>>) -> Result<(), SynthesisError> {
+        // TODO
+        Ok(())
     }
 
     fn new_variable(
@@ -302,6 +309,16 @@ impl<F: PrimeField, P: ModelParameters<BaseField = F> + SWModelParameters>
         let sum = Self::add(&x0, &constant);
         CondSelectGadget::conditionally_select(&b, &sum, &x0).unwrap()
     }
+
+    fn enforce_on_curve(pt: &SwNzAffVar<P, FpVar<F>>) -> Result<(), SynthesisError> {
+        let x = pt.x.clone();
+        let y = pt.y.clone();
+        let y2 = y.clone() * &y;
+        let x3 = x.clone() * &x * &x;
+        let rhs = x3 + x.clone() * P::COEFF_A + P::COEFF_B;
+        y2.enforce_equal(&rhs)
+    }
+
     fn new_variable(
         cs: impl Into<Namespace<<P::BaseField as Field>::BasePrimeField>>,
         f: impl FnOnce() -> Result<SWGroupProjective<P>, SynthesisError>,
@@ -309,12 +326,13 @@ impl<F: PrimeField, P: ModelParameters<BaseField = F> + SWModelParameters>
     ) -> Result<SwNzAffVar<P, FpVar<F>>, SynthesisError> {
         let f_res = f().map(|p| p.into_affine());
         let ns = cs.into();
+        if let Ok(a) = f_res.as_ref() {
+            assert!(!a.is_zero());
+        }
         let x = FpVar::new_variable(ns.clone(), || f_res.map(|a| a.x), mode)?;
-        let y = FpVar::new_variable(ns, || f_res.map(|a| a.y), mode)?;
-        if mode == AllocationMode::Witness {
-            let y2 = y.clone() * &y;
-            let x3 = x.clone() * &x * &x;
-            y2.enforce_equal(&(x3 + x.clone() * P::COEFF_A + P::COEFF_B))?;
+        let y = FpVar::new_variable(ns.clone(), || f_res.map(|a| a.y), mode)?;
+        if let (Ok(x), Ok(y)) = (x.value(), y.value()) {
+            assert_eq!((x.clone() * &x * &x) + P::COEFF_A * x + P::COEFF_B, y.clone() * &y);
         }
         Ok(SwNzAffVar::new(x, y))
     }

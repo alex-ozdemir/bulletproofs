@@ -247,6 +247,9 @@ impl<C: TwoChain> ConstraintSynthesizer<C::LinkField> for BpRecCircuit<C> {
                 )
             })
             .collect::<Result<_, _>>()?;
+        for ti in &t {
+            C::G1IncompleteOps::enforce_on_curve(ti)?;
+        }
         let (a, a_bits): (
             Vec<NonNativeFieldVar<C::TopField, C::LinkField>>,
             Vec<Vec<Boolean<C::LinkField>>>,
@@ -454,6 +457,15 @@ mod test {
         unroll_check::<PastaPair>(8, 2, 3);
         unroll_check::<PastaPair>(9, 3, 1);
         unroll_check::<PastaPair>(9, 3, 2);
+    }
+
+    #[test]
+    fn vellas_unroll() {
+        unroll_check::<VellasPair>(4, 2, 1);
+        unroll_check::<VellasPair>(8, 2, 2);
+        unroll_check::<VellasPair>(8, 2, 3);
+        unroll_check::<VellasPair>(9, 3, 1);
+        unroll_check::<VellasPair>(9, 3, 2);
     }
 
 }

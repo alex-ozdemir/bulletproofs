@@ -42,6 +42,7 @@ impl<C: TwoChain> Reduction for UnrollToComR1cs<C> {
         assert_eq!(cs.num_instance_variables(), 1);
         circ.generate_constraints(cs.clone()).unwrap();
         cs.finalize();
+        assert!(cs.is_satisfied().unwrap());
         let mats = cs.to_matrices().expect("No matrices");
         // (1, zs, a)
         let full_assignment: Vec<C::LinkField> = cs
@@ -112,17 +113,15 @@ impl<C: TwoChain> Reduction for UnrollToComR1cs<C> {
 mod test {
     use super::*;
     use crate::{
-        curves::{models::JubJubPair, TEPair},
+        curves::{
+            models::{JubJubPair, PastaPair, VellasPair},
+            TwoChain,
+        },
         reductions::{bp_unroll_to_com_r1cs::UnrollToComR1cs, ipa_to_bp_unroll::IpaToBpUnroll},
         relations::{com_r1cs::ComR1csRelation, ipa::IpaInstance},
     };
-    use ark_ec::{twisted_edwards_extended::GroupProjective, ModelParameters};
-    use ark_ff::prelude::*;
     use rand::Rng;
-    fn test_from_bp_unroll<P: TEPair>(init_size: usize, k: usize, r: usize)
-    where
-        <P::P1 as ModelParameters>::BaseField: PrimeField,
-    {
+    fn test_from_bp_unroll<C: TwoChain>(init_size: usize, k: usize, r: usize) {
         println!(
             "doing a unrolled circuit check with {} elems, k: {}, r: {}",
             init_size, k, r
@@ -131,15 +130,14 @@ mod test {
         let fs_seed: [u8; 32] = rng.gen();
         let mut fs_rng = crate::FiatShamirRng::from_seed(&fs_seed);
         let mut v_fs_rng = crate::FiatShamirRng::from_seed(&fs_seed);
-        let (instance, witness) =
-            IpaInstance::<GroupProjective<P::P1>>::sample_from_length(rng, init_size);
-        let reducer = IpaToBpUnroll::<P>::new(k, r);
+        let (instance, witness) = IpaInstance::<C::G1>::sample_from_length(rng, init_size);
+        let reducer = IpaToBpUnroll::<C>::new(k, r);
         let (proof, u_instance, u_witness) = reducer.prove(&instance, &witness, &mut fs_rng);
         UnrollRelation::check(&u_instance, &u_witness);
         let verif_u_instance = reducer.verify(&instance, &proof, &mut v_fs_rng);
         assert_eq!(verif_u_instance, u_instance);
         UnrollRelation::check(&verif_u_instance, &u_witness);
-        let reducer2 = UnrollToComR1cs::<P>::default();
+        let reducer2 = UnrollToComR1cs::<C>::default();
         let ((), r_instance, r_witness) = reducer2.prove(&u_instance, &u_witness, &mut fs_rng);
         ComR1csRelation::check(&r_instance, &r_witness);
         let v_r_instance = reducer2.verify(&u_instance, &(), &mut v_fs_rng);
@@ -155,5 +153,13 @@ mod test {
         //test_from_bp_unroll::<JubJubPair>(9, 3, 2);
         //test_from_bp_unroll::<JubJubPair>(2048, 4, 4);
         //test_from_bp_unroll::<JubJubPair>(2048, 4, 5);
+    }
+    #[test]
+    fn pasta_unroll_test() {
+        test_from_bp_unroll::<PastaPair>(4, 2, 1);
+    }
+    #[test]
+    fn vellas_unroll_test() {
+        test_from_bp_unroll::<VellasPair>(4, 2, 1);
     }
 }

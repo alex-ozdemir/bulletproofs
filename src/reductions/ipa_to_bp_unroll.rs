@@ -246,7 +246,7 @@ pub fn verify_step<C: TwoChain>(
 mod test {
     use super::*;
     use crate::{
-        curves::{models::JubJubPair, TwoChain},
+        curves::{models::{PastaPair, VellasPair, JubJubPair}, TwoChain},
         reductions::ipa_to_bp_unroll::IpaToBpUnroll,
         relations::ipa::IpaInstance,
     };
@@ -276,7 +276,27 @@ mod test {
         unroll_check::<JubJubPair>(8, 2, 3);
         unroll_check::<JubJubPair>(9, 3, 1);
         unroll_check::<JubJubPair>(9, 3, 2);
-        unroll_check::<JubJubPair>(2048, 4, 4);
-        unroll_check::<JubJubPair>(2048, 4, 5);
+        //unroll_check::<JubJubPair>(2048, 4, 4);
+        //unroll_check::<JubJubPair>(2048, 4, 5);
+    }
+    #[test]
+    fn pasta_unroll_test() {
+        unroll_check::<PastaPair>(4, 2, 1);
+        unroll_check::<PastaPair>(8, 2, 2);
+        unroll_check::<PastaPair>(8, 2, 3);
+        unroll_check::<PastaPair>(9, 3, 1);
+        unroll_check::<PastaPair>(9, 3, 2);
+        //unroll_check::<PastaPair>(2048, 4, 4);
+        //unroll_check::<PastaPair>(2048, 4, 5);
+    }
+    #[test]
+    fn vellas_unroll_test() {
+        unroll_check::<VellasPair>(4, 2, 1);
+        unroll_check::<VellasPair>(8, 2, 2);
+        unroll_check::<VellasPair>(8, 2, 3);
+        unroll_check::<VellasPair>(9, 3, 1);
+        unroll_check::<VellasPair>(9, 3, 2);
+        //unroll_check::<VellasPair>(2048, 4, 4);
+        //unroll_check::<VellasPair>(2048, 4, 5);
     }
 }

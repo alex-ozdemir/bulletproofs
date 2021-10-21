@@ -414,7 +414,5 @@ mod test {
         println!("Scalar bits: {}", <<ark_ed_on_bls12_381::EdwardsParameters as ModelParameters>::ScalarField as PrimeField>::size_in_bits());
         msm_test::<ark_ed_on_bls12_381::EdwardsParameters>(10);
         msm_test::<ark_ed_on_bls12_381::EdwardsParameters>(100);
-        //msm_test::<ark_ed_on_bls12_381::EdwardsParameters>(1000);
-        //msm_test::<ark_ed_on_bls12_381::EdwardsParameters>(5000);
     }
 }
