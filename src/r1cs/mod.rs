@@ -44,9 +44,9 @@ macro_rules! timed {
 
 /// The relation:
 ///
-///     p + <s, t> + randomizer
-///       = <a, gen_a> + <b, gen_b> + <a,b> * q + randomizer
-///     AND c = commit(t)
+///    p + <s, t> + randomizer
+///      = <a, gen_a> + <b, gen_b> + <a,b> * q + randomizer
+///    AND c = commit(t)
 ///
 /// where
 ///
