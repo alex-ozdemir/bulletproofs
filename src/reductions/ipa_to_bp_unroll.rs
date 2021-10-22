@@ -10,8 +10,8 @@ use crate::{
     },
     FiatShamirRng, Reduction, Relation,
 };
-use ark_ec::group::Group;
 use ark_ff::{One, UniformRand};
+use std::iter::once;
 use std::marker::PhantomData;
 
 pub struct IpaToBpUnroll<C: Pair> {
@@ -98,7 +98,10 @@ pub fn prove_step<C: Pair>(
     // Compute cross-terms
     // Let X[i,j] = a[i]*A[j] + b[j]*B[i] + <a[i],b[j]>*Q
     let x = |i: usize, j: usize| {
-        msm(&a_gen[j], &a[i]) + msm(&b_gen[i], &b[j]) + q.mul(&ip(&a[i], &b[j]))
+        msm(
+            a_gen[j].iter().chain(b_gen[i]).chain(once(&q)),
+            a[i].iter().chain(b[j]).chain(once(&ip(&a[i], &b[j]))),
+        )
     };
     // Then the positive cross-term T[i] for i in {0,..,k-2{ is
     // \sum j={1,..k-i} X[i+j,j]
@@ -246,7 +249,10 @@ pub fn verify_step<C: Pair>(
 mod test {
     use super::*;
     use crate::{
-        curves::{models::{PastaPair, VellasPair, JubJubPair}, Pair},
+        curves::{
+            models::{JubJubPair, PastaPair, VellasPair},
+            Pair,
+        },
         reductions::ipa_to_bp_unroll::IpaToBpUnroll,
         relations::ipa::IpaInstance,
     };

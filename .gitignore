@@ -1,3 +1,5 @@
 /target
 *sage.py
 out
+perf*
+flamegraph.svg

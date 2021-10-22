@@ -11,10 +11,19 @@ pub mod reductions;
 pub mod relations;
 pub mod util;
 
+use ark_ec::group::Group;
+use rand::Rng;
+use relations::ipa::{IpaInstance, IpaRelation};
+
 pub trait Relation {
     type Inst;
     type Wit;
     fn check(x: &Self::Inst, w: &Self::Wit);
+}
+
+pub trait SampleableRelation: Relation {
+    type Params;
+    fn sample<R: Rng>(p: &Self::Params, rng: &mut R) -> Self;
 }
 
 pub trait Reduction {
@@ -50,28 +59,37 @@ pub trait Proof<R: Relation> {
     fn verify(&self, x: &<R as Relation>::Inst, pf: &Self::Proof, fs: &mut FiatShamirRng);
 }
 
+/// Test an IPA on random instance-witness pairs.
+///
+/// ## Arguments
+///
+/// * `sizes`: vector lengths
+/// * `reps`: repetitions per length
+/// * `i`: the IPA
+pub fn test_ipa<G: Group, I: Proof<IpaRelation<G>>>(sizes: Vec<usize>, reps: usize, i: I) {
+    let rng = &mut ark_std::test_rng();
+    for size in sizes {
+        for _ in 0..reps {
+            let (instance, witness) = IpaInstance::<G>::sample_from_length(rng, size);
+            IpaRelation::check(&instance, &witness);
+            let fs_seed: [u8; 32] = rng.gen();
+            let mut fs_rng = FiatShamirRng::from_seed(&fs_seed);
+            let proof = i.prove(&instance, &witness, &mut fs_rng);
+            let mut fs_rng = FiatShamirRng::from_seed(&fs_seed);
+            i.verify(&instance, &proof, &mut fs_rng);
+        }
+    }
+}
+
 #[cfg(test)]
 pub mod test {
     use super::proofs::{bp_iter, bp_rec, bp_rec_kary, ipa_send};
     use super::relations::ipa::{IpaInstance, IpaRelation};
+    use super::test_ipa;
     use super::{FiatShamirRng, Proof, Reduction, Relation};
     use ark_bls12_381::Bls12_381;
     use ark_ec::{group::Group, PairingEngine};
     use rand::Rng;
-    pub fn test_ipa<G: Group, I: Proof<IpaRelation<G>>>(sizes: Vec<usize>, reps: usize, i: I) {
-        let rng = &mut ark_std::test_rng();
-        for size in sizes {
-            for _ in 0..reps {
-                let (instance, witness) = IpaInstance::<G>::sample_from_length(rng, size);
-                IpaRelation::check(&instance, &witness);
-                let fs_seed: [u8; 32] = rng.gen();
-                let mut fs_rng = FiatShamirRng::from_seed(&fs_seed);
-                let proof = i.prove(&instance, &witness, &mut fs_rng);
-                let mut fs_rng = FiatShamirRng::from_seed(&fs_seed);
-                i.verify(&instance, &proof, &mut fs_rng);
-            }
-        }
-    }
 
     #[test]
     fn test_bp_ipa_bls_g1() {
@@ -172,7 +190,6 @@ pub mod test {
             let i = bp_iter::Bp::<ark_vesta::Projective>::default();
             bench_ipa(16, i, b);
         }
-
 
         pub fn bench_ipa<G: Group, I: Proof<IpaRelation<G>>>(size: usize, i: I, b: &mut Bencher) {
             let rng = &mut ark_std::test_rng();

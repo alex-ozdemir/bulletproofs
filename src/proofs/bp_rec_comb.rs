@@ -19,7 +19,7 @@ pub fn bp<G: Group>() -> impl Proof<IpaRelation<G>> {
 #[cfg(test)]
 mod test {
     use super::bp;
-    use crate::test::test_ipa;
+    use crate::test_ipa;
     #[test]
     fn test_bls() {
         type G = ark_bls12_381::G1Projective;

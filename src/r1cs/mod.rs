@@ -35,9 +35,9 @@ use msm::{incomplete_known_point_msm, known_scalar_msm};
 
 macro_rules! timed {
     ($label:expr, $val:expr) => {{
-        let timer = start_timer!($label);
+        let timer = ::ark_std::start_timer!($label);
         let val = $val;
-        end_timer!(timer);
+        ::ark_std::end_timer!(timer);
         val
     }};
 }

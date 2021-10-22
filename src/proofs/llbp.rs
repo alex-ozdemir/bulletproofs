@@ -35,7 +35,7 @@ pub fn llbp<C: Pair>(k: usize, r: usize) -> impl Proof<IpaRelation<C::G1>>
 #[cfg(test)]
 mod test {
     use super::llbp;
-    use crate::{curves::models::{JubJubPair, VellasPair, PastaPair}, test::test_ipa};
+    use crate::{curves::models::{JubJubPair, VellasPair, PastaPair}, test_ipa};
     #[test]
     #[ignore]
     fn test_jubjub() {

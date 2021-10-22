@@ -5,6 +5,7 @@ use crate::{
 };
 use ark_ec::group::Group;
 use ark_ff::{Field, One, UniformRand};
+use std::iter::once;
 use std::marker::PhantomData;
 
 pub struct KaryBp<G, B> {
@@ -50,7 +51,12 @@ pub fn prove_step<G: Group>(
     // Compute cross-terms
     // Let X[i,j] = a[i]*A[j] + b[j]*B[i] + <a[i],b[j]>*Q
     let x = |i: usize, j: usize| {
-        msm(&a_gen[j], &a[i]) + msm(&b_gen[i], &b[j]) + q.mul(&ip(&a[i], &b[j]))
+        msm(
+            a_gen[j].iter().chain(b_gen[i].iter()).chain(once(&q)),
+            a[i].iter()
+                .chain(b[j].iter())
+                .chain(once(&ip(&a[i], &b[j]))),
+        )
     };
     // Then the positive cross-term T[i] for i in {0,..,k-2{ is
     // \sum j={1,..k-i} X[i+j,j]
@@ -104,11 +110,20 @@ pub fn prove_step<G: Group>(
         b_gen.iter().zip(&x_pows).map(|(c, y)| scale_vec(y, c)),
         ck_size,
     );
-    let p_next = msm(&pos_cross, &x_pows[1..]) + p + msm(&neg_cross, &x_inv_pows[1..]);
+    let p_next = msm(
+        pos_cross.iter().chain(&neg_cross),
+        x_pows[1..].iter().chain(&x_inv_pows[1..]),
+    ) + p;
 
     debug_assert_eq!(
         p_next,
-        msm(&a_gen_next, &a_next) + msm(&b_gen_next, &b_next) + q.mul(&ip(&a_next, &b_next))
+        msm(
+            a_gen_next.iter().chain(&b_gen_next).chain(once(&q)),
+            a_next
+                .iter()
+                .chain(&b_next)
+                .chain(once(&ip(&a_next, &b_next)))
+        )
     );
     let wit_next = IpaWitness {
         a: a_next,
@@ -160,7 +175,10 @@ pub fn verify_step<G: Group>(
         b_gen.iter().zip(&x_pows).map(|(c, y)| scale_vec(y, c)),
         ck_size,
     );
-    let p_next = msm(&pos_cross, &x_pows[1..]) + p + msm(&neg_cross, &x_inv_pows[1..]);
+    let p_next = msm(
+        pos_cross.iter().chain(neg_cross),
+        x_pows[1..].iter().chain(&x_inv_pows[1..]),
+    ) + p;
     IpaInstance {
         gens: IpaGens {
             vec_size: ck_size,
