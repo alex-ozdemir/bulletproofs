@@ -125,6 +125,7 @@ impl<G: Group> Reduction for ComR1csToIpa<G> {
             a_gens: p_prime,
             b_gens: q,
             ip_gen: r,
+            challenges: Vec::new(),
         };
         let witness = IpaWitness { a: u, b: v };
         (
@@ -208,6 +209,7 @@ impl<G: Group> Reduction for ComR1csToIpa<G> {
             a_gens: p_prime,
             b_gens: q,
             ip_gen: r,
+            challenges: Vec::new(),
         };
         IpaInstance {
             gens,

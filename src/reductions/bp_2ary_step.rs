@@ -77,6 +77,7 @@ impl<G: Group> Reduction for Bp2aryStep<G> {
                 ip_gen: q,
                 a_gens: a_gen_next,
                 b_gens: b_gen_next,
+                challenges: Vec::new(),
             },
             result: p_next,
         };
@@ -115,6 +116,7 @@ impl<G: Group> Reduction for Bp2aryStep<G> {
                 ip_gen: q,
                 a_gens: a_gen_next,
                 b_gens: b_gen_next,
+                challenges: Vec::new(),
             },
             result: p_next,
         };

@@ -78,6 +78,7 @@ impl<G: Group, B: Proof<IpaRelation<G>>> Proof<IpaRelation<G>> for Bp<G, B> {
             };
             let instance_next = IpaInstance {
                 gens: IpaGens {
+                    challenges: Vec::new(),
                     vec_size: n,
                     ip_gen: q,
                     a_gens: a_gen_next,
@@ -114,6 +115,7 @@ impl<G: Group, B: Proof<IpaRelation<G>>> Proof<IpaRelation<G>> for Bp<G, B> {
                     .collect();
                 let instance_next = IpaInstance {
                     gens: IpaGens {
+                        challenges: Vec::new(),
                         vec_size: n,
                         ip_gen: instance.gens.ip_gen,
                         a_gens: a_gen_next,

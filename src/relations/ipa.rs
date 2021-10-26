@@ -1,15 +1,24 @@
-use crate::{util::msm, Relation};
+use crate::{util::{msm, zero_pad_to_multiple}, Relation};
 use ark_ec::group::Group;
 use ark_ff::Field;
 use rand::Rng;
 use std::marker::PhantomData;
 
 #[derive(Clone, PartialEq, Eq, Debug)]
+/// Generators for an inner product relation
 pub struct IpaGens<G: Group> {
+    /// The size of the vectors
     pub vec_size: usize,
+    /// The A vector of generators
     pub a_gens: Vec<G>,
+    /// The B vector of generators
     pub b_gens: Vec<G>,
     pub ip_gen: G,
+    /// Challenges for folding the vectors
+    /// let fold(x, A) = A_L x + A_r x^{-1}
+    /// If the challenges are [c1, c2, ... cn],
+    /// then A' = fold(cn, ... fold(c2, fold(c1, A)))
+    pub challenges: Vec<G::ScalarField>,
 }
 
 impl<G: Group> IpaGens<G> {
@@ -19,11 +28,48 @@ impl<G: Group> IpaGens<G> {
             b_gens: (0..length).map(|_| G::rand(rng)).collect(),
             ip_gen: G::rand(rng),
             vec_size: length,
+            challenges: Vec::new(),
         }
     }
     pub fn commit_for_witness(&self, witness: &IpaWitness<G::ScalarField>) -> G {
         let ip = witness.ip();
+        assert_eq!(self.challenges.len(), 0);
         msm(&self.a_gens, &witness.a) + msm(&self.b_gens, &witness.b) + self.ip_gen.mul(&ip)
+    }
+    pub fn fold_to_length_1_naive(&self) -> Self {
+        assert!(1 << self.challenges.len() >= self.a_gens.len());
+        assert!(1 << self.challenges.len() >= self.b_gens.len());
+        let mut a_gen = self.a_gens.clone();
+        let mut b_gen = self.b_gens.clone();
+        let mut c_i = 0;
+        while a_gen.len() > 1 {
+            a_gen = zero_pad_to_multiple(&a_gen, 2);
+            b_gen = zero_pad_to_multiple(&b_gen, 2);
+            let n = a_gen.len() / 2;
+            let x = self.challenges[c_i].clone();
+            let x_inv = x.inverse().unwrap();
+            let a_gen_next: Vec<G> = a_gen[..n]
+                .iter()
+                .zip(&a_gen[n..])
+                .map(|(l, r)| l.mul(&x_inv) + r.mul(&x))
+                .collect();
+            let b_gen_next: Vec<G> = b_gen[..n]
+                .iter()
+                .zip(&b_gen[n..])
+                .map(|(l, r)| l.mul(&x) + r.mul(&x_inv))
+                .collect();
+                c_i += 1;
+            a_gen = a_gen_next;
+            b_gen = b_gen_next;
+        }
+        assert_eq!(c_i + 1, self.challenges.len());
+        Self {
+            vec_size: 1,
+            a_gens: a_gen,
+            b_gens: b_gen,
+            ip_gen: self.ip_gen.clone(),
+            challenges: Vec::new(),
+        }
     }
 }
 

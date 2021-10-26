@@ -135,6 +135,7 @@ pub fn prove_step<G: Group>(
             ip_gen: q,
             a_gens: a_gen_next,
             b_gens: b_gen_next,
+            challenges: Vec::new(),
         },
         result: p_next,
     };
@@ -185,6 +186,7 @@ pub fn verify_step<G: Group>(
             ip_gen: instance.gens.ip_gen,
             a_gens: a_gen_next,
             b_gens: b_gen_next,
+            challenges: Vec::new(),
         },
         result: p_next,
     }
