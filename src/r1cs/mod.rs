@@ -172,7 +172,7 @@ impl<C: Pair> BpRecCircuit<C> {
         let gen_a: Vec<_> = (0..m).map(|_| C::G1::rand(rng)).collect();
         // insecure
         let gen_b = gen_a.clone();
-        let zero = C::G1::zero();
+        let zero = C::G1::rand(rng);
         let a: Vec<_> = vec![C::TopField::zero(); m];
         let b = a.clone();
         let zeros = vec![zero.into(); k];

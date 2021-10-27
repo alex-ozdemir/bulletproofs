@@ -42,7 +42,7 @@ impl<C: Pair> Reduction for UnrollToComR1cs<C> {
         assert_eq!(cs.num_instance_variables(), 1);
         circ.generate_constraints(cs.clone()).unwrap();
         cs.finalize();
-        assert!(cs.is_satisfied().unwrap());
+        //assert!(cs.is_satisfied().unwrap());
         let mats = cs.to_matrices().expect("No matrices");
         // (1, zs, a)
         let full_assignment: Vec<C::LinkField> = cs

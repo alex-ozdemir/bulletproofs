@@ -79,6 +79,7 @@ pub trait IncompleteOpsGadget<F: Field, G: Clone, GVar: Debug> {
     /// * be non-equal
     /// * be non-zero
     /// * yield a non-zero result
+    /// Ensures conditions 1 and 3.
     fn add(a: &GVar, b: &GVar) -> GVar;
     /// Add a point to itself that must
     /// * yield a non-zero result
@@ -287,6 +288,8 @@ impl<F: PrimeField, P: ModelParameters<BaseField = F> + SWModelParameters>
     for SWIncompleteAffOps<F, P>
 {
     fn add(a: &SwNzAffVar<P, FpVar<F>>, b: &SwNzAffVar<P, FpVar<F>>) -> SwNzAffVar<P, FpVar<F>> {
+        // slows us down substantially, for some reason...
+        #[cfg(debug_assertions)]
         a.value()
             .map(|av| {
                 b.value().map(|bv| {
@@ -296,6 +299,7 @@ impl<F: PrimeField, P: ModelParameters<BaseField = F> + SWModelParameters>
                 })
             })
             .ok();
+        a.x.enforce_not_equal(&b.x).unwrap();
         a.add_unchecked(b).unwrap()
     }
     fn constant_double(x1: &SWGroupProjective<P>) -> SWGroupProjective<P> {
@@ -483,8 +487,7 @@ mod test {
         }
     }
 
-    fn test_add<C: Pair>(m: usize) {
-        let rng = &mut ark_std::test_rng();
+    fn test_add<C: Pair>(m: usize) { let rng = &mut ark_std::test_rng();
         let cir = Add::<C>::sample_from_length(rng, m);
         let mut layer = ConstraintLayer::default();
         layer.mode = TracingMode::OnlyConstraints;
@@ -525,5 +528,33 @@ mod test {
         test_add::<crate::curves::SWCycleChain2<crate::curves::models::PastaCycle>>(1);
         test_add::<crate::curves::SWCycleChain2<crate::curves::models::PastaCycle>>(10);
         test_add::<crate::curves::SWCycleChain2<crate::curves::models::PastaCycle>>(100);
+    }
+
+    fn test_add_constraint_count<C: Pair>(constraints: usize) {
+        let rng = &mut ark_std::test_rng();
+        let mut layer = ConstraintLayer::default();
+        layer.mode = TracingMode::OnlyConstraints;
+        let subscriber = tracing_subscriber::Registry::default().with(layer);
+        let _guard = tracing::subscriber::set_default(subscriber);
+        let cs: ConstraintSystemRef<C::LinkField> = ConstraintSystem::new_ref();
+        cs.set_optimization_goal(OptimizationGoal::Constraints);
+        let a = C::G1IncompleteOps::new_variable(ns!(cs, "a"), || Ok(C::G1::rand(rng)), AllocationMode::Witness).unwrap();
+        let b = C::G1IncompleteOps::new_variable(ns!(cs, "b"), || Ok(C::G1::rand(rng)), AllocationMode::Witness).unwrap();
+        let _sum = C::G1IncompleteOps::add(&a, &b);
+        cs.finalize();
+        assert_eq!(cs.num_constraints(), constraints);
+    }
+
+    #[test]
+    fn jubjub_add() {
+        test_add_constraint_count::<crate::curves::models::JubJubPair>(6);
+    }
+    #[test]
+    fn vellas_add() {
+        test_add_constraint_count::<crate::curves::models::VellasPair>(4);
+    }
+    #[test]
+    fn pasta_add() {
+        test_add_constraint_count::<crate::curves::models::PastaPair>(4);
     }
 }
