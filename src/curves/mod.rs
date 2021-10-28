@@ -84,6 +84,14 @@ pub trait IncompleteOpsGadget<F: Field, G: Clone, GVar: Debug> {
     /// * yield a non-zero result
     /// Ensures conditions 1 and 3.
     fn add(a: &GVar, b: &GVar) -> GVar;
+    /// Add two points that must
+    /// * be non-equal
+    /// * be non-zero
+    /// * yield a non-zero result
+    /// Ensures *nothing*.
+    fn add_unchecked(a: &GVar, b: &GVar) -> GVar {
+        Self::add(a, b)
+    }
     /// Add a point to itself that must
     /// * yield a non-zero result
     fn double(a: &GVar) -> GVar;
@@ -294,6 +302,10 @@ impl<F: PrimeField, P: ModelParameters<BaseField = F> + SWModelParameters>
     for SWIncompleteAffOps<F, P>
 {
     fn add(a: &SwNzAffVar<P, FpVar<F>>, b: &SwNzAffVar<P, FpVar<F>>) -> SwNzAffVar<P, FpVar<F>> {
+        a.x.enforce_not_equal(&b.x).unwrap();
+        Self::add_unchecked(a, b)
+    }
+    fn add_unchecked(a: &SwNzAffVar<P, FpVar<F>>, b: &SwNzAffVar<P, FpVar<F>>) -> SwNzAffVar<P, FpVar<F>> {
         // slows us down substantially, for some reason...
         #[cfg(debug_assertions)]
         a.value()
@@ -305,7 +317,6 @@ impl<F: PrimeField, P: ModelParameters<BaseField = F> + SWModelParameters>
                 })
             })
             .ok();
-        a.x.enforce_not_equal(&b.x).unwrap();
         a.add_unchecked(b).unwrap()
     }
     fn constant_double(x1: &SWGroupProjective<P>) -> SWGroupProjective<P> {
@@ -422,7 +433,7 @@ impl<F: PrimeField, P: ModelParameters<BaseField = F> + SWModelParameters>
                 }
             }
             let to_add = Self::constant_lookup(bs, &points);
-            result = Self::add(&result, &to_add);
+            result = Self::add_unchecked(&result, &to_add);
         }
         if n_chunks > 0 {
             double_acc *= P::ScalarField::from(n_chunks);
