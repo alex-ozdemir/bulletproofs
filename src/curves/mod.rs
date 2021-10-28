@@ -21,9 +21,12 @@ use ark_r1cs_std::{
 use ark_relations::r1cs::{Namespace, SynthesisError};
 use derivative::Derivative;
 use std::fmt::Debug;
+use std::iter::successors;
 use std::marker::PhantomData;
 
 use ark_std::{end_timer, start_timer};
+
+use crate::util::CollectIter;
 
 macro_rules! timed {
     ($label:expr, $val:expr) => {{
@@ -132,7 +135,8 @@ pub trait IncompleteOpsGadget<F: Field, G: Clone, GVar: Debug> {
         Ok(acc)
     }
     fn precomputed_base_multiscalar_mul_le<'a, T: ?Sized, I>(
-        acc_point: GVar,
+        cs: Namespace<F>,
+        acc_point: &G,
         bases: &[G],
         scalars: I,
     ) -> Result<GVar, SynthesisError>
@@ -140,7 +144,7 @@ pub trait IncompleteOpsGadget<F: Field, G: Clone, GVar: Debug> {
         T: 'a + ToBitsGadget<F>,
         I: Iterator<Item = &'a T>,
     {
-        let mut result = acc_point;
+        let mut result = Self::alloc_constant(cs, acc_point)?;
         // Compute Σᵢ(bitᵢ * baseᵢ) for all i.
         for (bits, base) in scalars.zip(bases.iter()) {
             let bits = bits.to_bits_le()?;
@@ -220,7 +224,8 @@ impl<F: PrimeField, P: ModelParameters<BaseField = F> + TEModelParameters>
         AllocVar::new_constant(cs, a.clone())
     }
     fn precomputed_base_multiscalar_mul_le<'a, T: ?Sized, I>(
-        acc_point: TEAffineVar<P, FpVar<F>>,
+        cs: Namespace<F>,
+        acc_point: &TEGroupProjective<P>,
         bases: &[TEGroupProjective<P>],
         scalars: I,
     ) -> Result<TEAffineVar<P, FpVar<F>>, SynthesisError>
@@ -235,6 +240,7 @@ impl<F: PrimeField, P: ModelParameters<BaseField = F> + TEModelParameters>
             scalars,
         )?;
         end_timer!(t);
+        let acc_point = Self::alloc_constant(cs, acc_point)?;
         Ok(r + acc_point)
     }
 }
@@ -359,6 +365,174 @@ impl<F: PrimeField, P: ModelParameters<BaseField = F> + SWModelParameters>
         let y = FpVar::new_constant(ns, aff.y)?;
         Ok(SwNzAffVar::new(x, y))
     }
+    fn precomputed_base_multiscalar_mul_le<'a, T: ?Sized, I>(
+        cs: Namespace<F>,
+        acc_point: &SWGroupProjective<P>,
+        points: &[SWGroupProjective<P>],
+        scalars: I,
+    ) -> Result<SwNzAffVar<P, FpVar<F>>, SynthesisError>
+    where
+        T: 'a + ToBitsGadget<F>,
+        I: Iterator<Item = &'a T>,
+    {
+        let bits_per_scalar = P::ScalarField::size_in_bits();
+        // Get the points that we want to multiply by bits.
+        let bit_points = points
+            .iter()
+            .flat_map(|pt| {
+                successors(Some(pt.clone()), |prev| Some(ProjectiveCurve::double(prev)))
+                    .take(bits_per_scalar)
+            })
+            .vcollect();
+        // Get the bits
+        let bits = scalars.flat_map(|s| s.to_bits_le().unwrap()).vcollect();
+        assert_eq!(bit_points.len(), bits.len());
+        // We're going to compute the MSM using windowed conditional addition.
+        //
+        // That is, for a window of n bits,
+        //
+        // Now we want to compute a bit-msm.
+        //
+        // Our incomplete addition gadget requires 3 constraints.
+        //
+        // The following table shows cost.
+        //
+        // n | cs (mux) | cs w/ 2 mux | cs w/ op | cs/bit
+        // --+----------+-------------+----------+-------
+        // 1 |        0 |           0 |        3 |   3.00
+        // 2 |        1 |           2 |        5 |   2.50
+        // 3 |        2 |           4 |        7 |   2.33  (this one)
+        // 4 |        4 |           8 |       11 |   2.75
+        let const_ = Self::alloc_constant(cs.clone(), acc_point)?;
+        let mut double_acc = acc_point.clone();
+        double_acc *= P::ScalarField::from(2u32);
+        let mut result = const_.clone();
+        let mut n_chunks = 0u64;
+        let n = 3;
+        for (ps, bs) in bit_points.chunks(n).zip(bits.chunks(n)) {
+            n_chunks += 1;
+            assert_eq!(ps.len(), bs.len());
+            let m = ps.len();
+            let mut points = vec![double_acc.clone(); 1 << m];
+            for (i, p) in ps.iter().enumerate() {
+                for j in 0..points.len() {
+                    if (j >> i) & 1 == 1 {
+                        points[j] += p;
+                    }
+                }
+            }
+            let to_add = Self::constant_lookup(bs, &points);
+            result = Self::add(&result, &to_add);
+        }
+        if n_chunks > 0 {
+            double_acc *= P::ScalarField::from(n_chunks);
+            let shift = Self::alloc_constant(cs.clone(), &double_acc)?;
+            result = result.sub_unchecked(&shift)?;
+        }
+        Ok(result)
+    }
+}
+impl<F: PrimeField, P: ModelParameters<BaseField = F> + SWModelParameters>
+    SWIncompleteAffOps<F, P>
+{
+    /// bits are little-endian (LSB at index 0)
+    ///
+    /// Supports 1, 2, and 3 bits
+    fn constant_lookup(
+        bits: &[Boolean<F>],
+        table: &[SWGroupProjective<P>],
+    ) -> SwNzAffVar<P, FpVar<F>> {
+        debug_assert_eq!(table.len(), 1 << bits.len());
+        let atable = table.iter().map(|p| p.into_affine()).vcollect();
+        let (x, y) = match bits.len() {
+            1 => (
+                constant_lookup_1bit_fpvar(bits, atable.iter().map(|pt| &pt.x)),
+                constant_lookup_1bit_fpvar(bits, atable.iter().map(|pt| &pt.y)),
+            ),
+            2 => (
+                constant_lookup_2bit_fpvar(bits, atable.iter().map(|pt| &pt.x)),
+                constant_lookup_2bit_fpvar(bits, atable.iter().map(|pt| &pt.y)),
+            ),
+            3 => (
+                constant_lookup_3bit_fpvar(bits, atable.iter().map(|pt| &pt.x)),
+                constant_lookup_3bit_fpvar(bits, atable.iter().map(|pt| &pt.y)),
+            ),
+            n => panic!("Unsupport table bit size {}", n),
+        };
+        let r = SwNzAffVar::new(x, y);
+        r
+    }
+}
+
+/// bits are little-endian (LSB at index 0)
+fn constant_lookup_3bit_fpvar<'a, F: PrimeField>(
+    bits: &[Boolean<F>],
+    mut table: impl Iterator<Item = &'a F>,
+) -> FpVar<F> {
+    debug_assert_eq!(bits.len(), 3);
+    let b0: FpVar<F> = bits[0].clone().into();
+    let b1: FpVar<F> = bits[1].clone().into();
+    let b2: FpVar<F> = bits[2].clone().into();
+    let t0 = table.next().expect("wrong number of consts");
+    let t1 = table.next().expect("wrong number of consts");
+    let t2 = table.next().expect("wrong number of consts");
+    let t3 = table.next().expect("wrong number of consts");
+    let t4 = table.next().expect("wrong number of consts");
+    let t5 = table.next().expect("wrong number of consts");
+    let t6 = table.next().expect("wrong number of consts");
+    let t7 = table.next().expect("wrong number of consts");
+    debug_assert!(table.next().is_none(), "too many consts");
+    // Real multiplication
+    let b01 = b0.clone() * &b1;
+
+    let a210 = b01.clone() * (*t7 - t6 - t5 + t4 - t3 + t2 + t1 - t0);
+    let a21 = b1.clone() * (*t6 - t4 - t2 + t0);
+    let a20 = b0.clone() * (*t5 - t4 - t1 + t0);
+    let a2 = *t4 - t0;
+
+    let a10 = b01 * (*t3 - t2 - t1 + t0);
+    let a1 = b1 * (*t2 - t0);
+    let a0 = b0 * (*t1 - t0);
+    let a = t0;
+    // Real multiplication
+    (a210 + a21 + a20 + a2) * b2 + (a10 + a1 + a0 + *a)
+}
+
+/// bits are little-endian (LSB at index 0)
+fn constant_lookup_2bit_fpvar<'a, F: PrimeField>(
+    bits: &[Boolean<F>],
+    mut table: impl Iterator<Item = &'a F>,
+) -> FpVar<F> {
+    debug_assert_eq!(bits.len(), 2);
+    let b0: FpVar<F> = bits[0].clone().into();
+    let b1: FpVar<F> = bits[1].clone().into();
+    let t0 = table.next().expect("wrong number of consts");
+    let t1 = table.next().expect("wrong number of consts");
+    let t2 = table.next().expect("wrong number of consts");
+    let t3 = table.next().expect("wrong number of consts");
+    debug_assert!(table.next().is_none(), "too many consts");
+    // Real multiplication
+    let b01 = b0.clone() * &b1;
+
+    let a10 = b01.clone() * (*t3 - t2 - t1 + t0);
+    let a1 = b1.clone() * (*t2 - t0);
+    let a0 = b0.clone() * (*t1 - t0);
+    let a = t0;
+
+    a10 + a1 + a0 + *a
+}
+
+/// bits are little-endian (LSB at index 0)
+fn constant_lookup_1bit_fpvar<'a, F: PrimeField>(
+    bits: &[Boolean<F>],
+    mut table: impl Iterator<Item = &'a F>,
+) -> FpVar<F> {
+    debug_assert_eq!(bits.len(), 1);
+    let b0: FpVar<F> = bits[0].clone().into();
+    let t0 = table.next().expect("wrong number of consts");
+    let t1 = table.next().expect("wrong number of consts");
+    debug_assert!(table.next().is_none(), "too many consts");
+    b0.clone() * (*t1 - t0) + *t0
 }
 
 /// A pair (G1, G2)
@@ -487,7 +661,8 @@ mod test {
         }
     }
 
-    fn test_add<C: Pair>(m: usize) { let rng = &mut ark_std::test_rng();
+    fn test_add<C: Pair>(m: usize) {
+        let rng = &mut ark_std::test_rng();
         let cir = Add::<C>::sample_from_length(rng, m);
         let mut layer = ConstraintLayer::default();
         layer.mode = TracingMode::OnlyConstraints;
@@ -538,8 +713,18 @@ mod test {
         let _guard = tracing::subscriber::set_default(subscriber);
         let cs: ConstraintSystemRef<C::LinkField> = ConstraintSystem::new_ref();
         cs.set_optimization_goal(OptimizationGoal::Constraints);
-        let a = C::G1IncompleteOps::new_variable(ns!(cs, "a"), || Ok(C::G1::rand(rng)), AllocationMode::Witness).unwrap();
-        let b = C::G1IncompleteOps::new_variable(ns!(cs, "b"), || Ok(C::G1::rand(rng)), AllocationMode::Witness).unwrap();
+        let a = C::G1IncompleteOps::new_variable(
+            ns!(cs, "a"),
+            || Ok(C::G1::rand(rng)),
+            AllocationMode::Witness,
+        )
+        .unwrap();
+        let b = C::G1IncompleteOps::new_variable(
+            ns!(cs, "b"),
+            || Ok(C::G1::rand(rng)),
+            AllocationMode::Witness,
+        )
+        .unwrap();
         let _sum = C::G1IncompleteOps::add(&a, &b);
         cs.finalize();
         assert_eq!(cs.num_constraints(), constraints);

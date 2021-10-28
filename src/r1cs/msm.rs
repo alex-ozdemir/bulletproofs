@@ -12,7 +12,7 @@ use ark_r1cs_std::{
 
 use ark_relations::{
     ns,
-    r1cs::{self, ConstraintSynthesizer, ConstraintSystemRef},
+    r1cs::{self, ConstraintSynthesizer, ConstraintSystemRef, Namespace},
 };
 
 macro_rules! timed {
@@ -159,11 +159,12 @@ pub fn incomplete_known_point_msm<
     GVar: Debug,
     I: IncompleteOpsGadget<F, G, GVar>,
 >(
-    acc: GVar,
+    cs: Namespace<F>,
+    acc: &G,
     scalars: Vec<Vec<Boolean<F>>>,
     points: &[G],
 ) -> GVar {
-    I::precomputed_base_multiscalar_mul_le(acc, &points, scalars.iter()).unwrap()
+    I::precomputed_base_multiscalar_mul_le(cs, acc, &points, scalars.iter()).unwrap()
 }
 
 pub fn known_point_msm<G: ProjectiveCurve, GVar: CurveVar<G, G::BaseField>>(
@@ -313,14 +314,16 @@ mod test {
             })
             .unzip();
         let cs_before = cs.num_constraints();
-        let rand_const = C::G1IncompleteOps::alloc_constant(ns!(cs, "c"), &randomizer).unwrap();
+        //let rand_const = C::G1IncompleteOps::alloc_constant(ns!(cs, "c"), &randomizer).unwrap();
         let msm = incomplete_known_point_msm::<_, _, _, C::G1IncompleteOps>(
-            rand_const,
+            ns!(cs, "msm"),
+            &randomizer,
             scalar_bits,
             &points,
         );
         assert!(cs.is_satisfied().unwrap());
         let ex_const = C::G1IncompleteOps::alloc_constant(ns!(cs, "expect"), &expected).unwrap();
+        assert!(cs.is_satisfied().unwrap());
         msm.enforce_equal(&ex_const).unwrap();
         assert!(cs.is_satisfied().unwrap());
         cs.num_constraints() - cs_before
@@ -394,4 +397,53 @@ mod test {
         incomplete_fb_msm_test::<SWCycleChain1<PastaCycle>>(10);
         incomplete_fb_msm_test::<SWCycleChain1<PastaCycle>>(100);
     }
+
+    fn fb_pasta_simple(scalar: u32) {
+        type C = SWCycleChain1<PastaCycle>;
+        let rng = &mut ark_std::test_rng();
+        let cs: ConstraintSystemRef<<C as Pair>::LinkField> = ConstraintSystem::new_ref();
+        let points = vec![<C as Pair>::G1::rand(rng)];
+        let scalars = vec![<C as Pair>::TopField::from(scalar)];
+        let randomizer = <C as Pair>::G1::rand(rng);
+        let expected = crate::util::msm(&points, &scalars) + &randomizer;
+        let (_scalar_vars, scalar_bits): (
+            Vec<NonNativeFieldVar<<C as Pair>::TopField, <C as Pair>::LinkField>>,
+            Vec<Vec<Boolean<<C as Pair>::LinkField>>>,
+        ) = (0..1)
+            .map(|i| {
+                let (f, bits) = AllocatedNonNativeFieldVar::new_witness_with_le_bits(
+                    ns!(cs, "a"),
+                    || Ok(scalars[i].clone()),
+                    //AllocationMode::Witness,
+                )
+                .unwrap();
+                let b: Vec<Boolean<<C as Pair>::LinkField>> = bits;
+                (f.into(), b)
+            })
+            .unzip();
+        //let rand_const = <C as Pair>::G1IncompleteOps::alloc_constant(ns!(cs, "c"), &randomizer).unwrap();
+        let msm = incomplete_known_point_msm::<_, _, _, <C as Pair>::G1IncompleteOps>(
+            ns!(cs, "msm"),
+            &randomizer,
+            scalar_bits,
+            &points,
+        );
+        let ex_const = <C as Pair>::G1IncompleteOps::alloc_constant(ns!(cs, "expect"), &expected).unwrap();
+        msm.enforce_equal(&ex_const).unwrap();
+        assert!(cs.is_satisfied().unwrap());
+    }
+
+    #[test]
+    fn fb_pasta_simple_0() {
+        fb_pasta_simple(0)
+    }
+    #[test]
+    fn fb_pasta_simple_1() {
+        fb_pasta_simple(1)
+    }
+    #[test]
+    fn fb_pasta_simple_2() {
+        fb_pasta_simple(2)
+    }
+
 }

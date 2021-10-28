@@ -305,8 +305,7 @@ impl<C: Pair> ConstraintSynthesizer<C::LinkField> for BpRecCircuit<C> {
             scalars.push(ip_bits);
             points.push(self.q.clone());
             let acc_val: C::G1 = self.randomizer.clone();
-            let acc = C::G1IncompleteOps::alloc_constant(ns!(cs, "acc"), &acc_val).unwrap();
-            incomplete_known_point_msm::<_, _, _, C::G1IncompleteOps>(acc, scalars, &points)
+            incomplete_known_point_msm::<_, _, _, C::G1IncompleteOps>(ns!(cs, "msm"), &acc_val, scalars, &points)
         });
 
         // compute p + <s, t>
