@@ -4,9 +4,9 @@ use rand::Rng;
 use std::ops::Range;
 use std::ops::{AddAssign, MulAssign};
 
-mod msm;
+pub mod msm;
 
-pub use msm::bos_coster_msm as msm;
+pub use msm::pippenger_msm as msm;
 
 #[track_caller]
 pub fn ip<F: Field>(a: &[F], b: &[F]) -> F {
