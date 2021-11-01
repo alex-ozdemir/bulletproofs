@@ -22,6 +22,7 @@ class CircuitPrimitiveCosts(NamedTuple):
     fb_msm_cs_per_bit: float
     cs_per_nonnative_ip_elem: float
     cs_per_nonnative_ip_reduce: float
+    cs_per_op: float
 
     def to_cs_cost_model(self):
         lam = 128
@@ -34,31 +35,45 @@ class CircuitPrimitiveCosts(NamedTuple):
 
         return ConstraintCostModel(
             self.cs_per_nonnative_ip_reduce,
-            float(self.fs_msm_adds_25000_elems * 6 / 25000 * log(25000, 2)),
+            float(
+                self.fs_msm_adds_25000_elems * self.cs_per_op / 25000 * log(25000, 2)
+            ),
             0.0,
             per_m,
         )
 
 
 # from measurement
-actual_cs_costs = ConstraintCostModel(1941.2, 1927.5, -8.2, 2622.5)
+# jubjub/bls12_381_g1
+# actual_cs_costs = ConstraintCostModel(1941.2, 1927.5, -8.2, 2622.5)
+# pasta
+actual_cs_costs = ConstraintCostModel(1751.7, 1299, -1.7, 1799)
 
-
+# pasta, ark
+pasta_prims = CircuitPrimitiveCosts(
+    fs_msm_adds_25000_elems=21 * 25000,  # can do better?
+    fb_msm_cs_per_bit=2.333,  # zcash
+    cs_per_nonnative_ip_elem=100,  # karatsuba, 3 limbs
+    cs_per_nonnative_ip_reduce=actual_cs_costs.constant,  # idk
+    cs_per_op=4,
+)
 # theoretical
 best_prims = CircuitPrimitiveCosts(
     fs_msm_adds_25000_elems=21 * 25000,  # can do better?
     fb_msm_cs_per_bit=3.2,  # zcash
-    cs_per_nonnative_ip_elem=6, # karatsuba, 3 limbs
+    cs_per_nonnative_ip_elem=6,  # karatsuba, 3 limbs
     cs_per_nonnative_ip_reduce=actual_cs_costs.constant,  # idk
+    cs_per_op=6,
 )
 ark_prims = CircuitPrimitiveCosts(
     fs_msm_adds_25000_elems=21 * 25000,
-    fb_msm_cs_per_bit=4, # no windows?
+    fb_msm_cs_per_bit=4,  # no windows?
     cs_per_nonnative_ip_elem=100,  # too many limbs?
     cs_per_nonnative_ip_reduce=actual_cs_costs.constant,
+    cs_per_op=6,
 )
 
-theory_cs_costs = best_prims.to_cs_cost_model()
+theory_cs_costs = pasta_prims.to_cs_cost_model()
 
 
 def constraints(k, r, n, cs_costs: ConstraintCostModel):
@@ -68,13 +83,16 @@ def constraints(k, r, n, cs_costs: ConstraintCostModel):
 
 
 def pf_size(k, r, n, cs_costs: ConstraintCostModel):
-    # TODO: perhaps introduce a growth factor from the compiler
     ipa_elements = constraints(k, r, n, cs_costs) + k
-    return r + 2 * log(ipa_elements, 2)
+    return (
+        r
+        + 1  # commitments at each unroll
+        + bp_pf_size(ipa_elements)  # r1cs->IPA compiler  # BP for the IPA
+    )
 
 
 def bp_pf_size(n):
-    return 2 * log(n, 2)
+    return 2 * log(n, 2) + 2
 
 
 vars = var("l m k r n")
@@ -86,7 +104,8 @@ baseline_size = bp_pf_size(n)
 print("l: fixed-scalar MSM size; m: IP size")
 print("Cs costs theory   :", theory_cs_costs.mk_func(l, m))
 print("Cs costs impl     :", actual_cs_costs.mk_func(l, m))
-print("theory,  given ark:", ark_prims.to_cs_cost_model().mk_func(l, m))
+# print("theory,  given ark:", ark_prims.to_cs_cost_model().mk_func(l, m))
+
 
 def print_size_table(size_fn):
     r_vals = list(range(1, 7))
@@ -135,5 +154,5 @@ def print_size_table(size_fn):
                 bigger_rs_needed = True
 
 
-#print_size_table(actual_size)
+# print_size_table(actual_size)
 print_size_table(theory_size)
