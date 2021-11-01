@@ -49,6 +49,7 @@ fn msm_bench<G: Group, F: FnOnce(Vec<G>, Vec<G::ScalarField>) -> G>(n: usize, f:
 }
 
 fn main() {
+    env_logger::init();
     let opt = Opt::from_args();
     let seconds = match (opt.curve, opt.msm) {
         (Curve::Pallas, Msm::Naive) => {

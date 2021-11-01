@@ -59,6 +59,9 @@ impl<C: Pair> Reduction for IpaToBpUnroll<C> {
         verify_unroll(self.r, &mut u_x, &pf, fs);
         u_x
     }
+    fn proof_size(p: &Self::Proof) -> usize {
+        p.len()
+    }
 }
 
 pub fn prove_unroll<C: Pair>(

@@ -14,6 +14,7 @@ pub mod util;
 use ark_ec::group::Group;
 use rand::Rng;
 use relations::ipa::{IpaInstance, IpaRelation};
+use log::debug;
 
 pub trait Relation {
     type Inst;
@@ -46,6 +47,8 @@ pub trait Reduction {
         pf: &Self::Proof,
         fs: &mut FiatShamirRng,
     ) -> <Self::To as Relation>::Inst;
+    /// Return the number of field or group elements in a seralized proof.
+    fn proof_size(p: &Self::Proof) -> usize;
 }
 
 pub trait Proof<R: Relation> {
@@ -57,6 +60,7 @@ pub trait Proof<R: Relation> {
         fs: &mut FiatShamirRng,
     ) -> Self::Proof;
     fn verify(&self, x: &<R as Relation>::Inst, pf: &Self::Proof, fs: &mut FiatShamirRng);
+    fn proof_size(p: &Self::Proof) -> usize;
 }
 
 /// Test an IPA on random instance-witness pairs.
@@ -75,6 +79,8 @@ pub fn test_ipa<G: Group, I: Proof<IpaRelation<G>>>(sizes: Vec<usize>, reps: usi
             let fs_seed: [u8; 32] = rng.gen();
             let mut fs_rng = FiatShamirRng::from_seed(&fs_seed);
             let proof = i.prove(&instance, &witness, &mut fs_rng);
+            let proof_size = I::proof_size(&proof);
+            debug!("Proof size: {}", proof_size);
             let mut fs_rng = FiatShamirRng::from_seed(&fs_seed);
             i.verify(&instance, &proof, &mut fs_rng);
         }

@@ -122,6 +122,9 @@ impl<G: Group> Reduction for Bp2aryStep<G> {
         };
         instance_next
     }
+    fn proof_size(_p: &Self::Proof) -> usize {
+        2
+    }
 }
 
 #[cfg(test)]

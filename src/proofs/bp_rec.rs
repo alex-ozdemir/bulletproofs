@@ -127,6 +127,12 @@ impl<G: Group, B: Proof<IpaRelation<G>>> Proof<IpaRelation<G>> for Bp<G, B> {
             }
         }
     }
+    fn proof_size(p: &Self::Proof) -> usize {
+        match p {
+            BpProof::Rec(_, _, r) => 2 + Self::proof_size(r),
+            BpProof::Base(b) => B::proof_size(b),
+        }
+    }
 }
 
 pub enum BpProof<G: Group, B: Proof<IpaRelation<G>>> {

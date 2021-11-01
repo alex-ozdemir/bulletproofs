@@ -142,6 +142,9 @@ impl<G: Group> Proof<IpaRelation<G>> for Bp<G> {
         }
         assert_eq!(instance.result, msm(&final_msm_points, &final_msm_scalars));
     }
+    fn proof_size(p: &Self::Proof) -> usize {
+        2 * (1 + p.ls.len())
+    }
 }
 
 pub struct BpProof<G: Group> {

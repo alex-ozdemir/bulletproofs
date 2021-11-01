@@ -31,6 +31,7 @@ arg_enum! {
 }
 
 fn main() {
+    env_logger::init();
     let opt = Opt::from_args();
     let rng = &mut rand::thread_rng();
     let cs = match opt.curve {

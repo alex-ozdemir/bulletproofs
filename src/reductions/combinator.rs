@@ -40,6 +40,9 @@ impl<R1: Reduction, R2: Reduction<From = R1::To>> Reduction for Sequence<R1, R2>
         let x_2 = self.r2.verify(&x_1, pf_2, fs);
         x_2
     }
+    fn proof_size(p: &Self::Proof) -> usize {
+        R1::proof_size(&p.0) + R2::proof_size(&p.1)
+    }
 }
 
 pub struct RepeatWhile<R: Relation, R1: Reduction<From = R, To = R>, While: Fn(&R::Inst) -> bool> {
@@ -103,6 +106,9 @@ where
         assert_eq!(pfs.len(), 0, "Too many proofs");
         x
     }
+    fn proof_size(p: &Self::Proof) -> usize {
+        p.iter().map(|pi| R1::proof_size(pi)).sum()
+    }
 }
 
 pub struct True;
@@ -138,5 +144,8 @@ impl<R: Relation, P: Reduction<From = R, To = True>> Proof<R> for TrueReductionT
     }
     fn verify(&self, x: &<R as Relation>::Inst, pf: &Self::Proof, fs: &mut FiatShamirRng) {
         self.0.verify(x, pf, fs);
+    }
+    fn proof_size(p: &Self::Proof) -> usize {
+        P::proof_size(p)
     }
 }

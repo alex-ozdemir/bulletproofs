@@ -107,6 +107,9 @@ impl<C: Pair> Reduction for UnrollToComR1cs<C> {
         };
         x_r1cs
     }
+    fn proof_size(_p: &Self::Proof) -> usize {
+        0
+    }
 }
 
 #[cfg(test)]

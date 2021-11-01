@@ -43,6 +43,9 @@ impl<G: Group> Reduction for SendIpa<G> {
         IpaRelation::check(&instance, &w);
         ()
     }
+    fn proof_size(_p: &Self::Proof) -> usize {
+        2
+    }
 }
 
 #[cfg(test)]

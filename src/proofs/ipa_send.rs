@@ -28,4 +28,8 @@ impl<G: Group> Proof<IpaRelation<G>> for SendIpa<G> {
     fn verify(&self, instance: &IpaInstance<G>, proof: &Self::Proof, _fs: &mut FiatShamirRng) {
         IpaRelation::check(&instance, &proof);
     }
+
+    fn proof_size(p: &Self::Proof) -> usize {
+        p.a.len() + p.b.len()
+    }
 }

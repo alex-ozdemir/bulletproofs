@@ -216,6 +216,9 @@ impl<G: Group> Reduction for ComR1csToIpa<G> {
             result: s_pprime,
         }
     }
+    fn proof_size(_p: &Self::Proof) -> usize {
+        1
+    }
 }
 
 #[cfg(test)]

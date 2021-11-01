@@ -28,6 +28,7 @@ ark-bls12-381 = "0.3"
 ark-ed-on-bls12-381 = "0.3"
 ark-pallas = "0.3"
 ark-vesta = "0.3"
+log = "0.4"
 
 [dev-dependencies]
 
@@ -35,6 +36,7 @@ ark-nonnative-field = { path = "../ark-nonnative" }
 tracing = { version = "0.1", default-features = false, features = [ "attributes" ] }
 tracing-subscriber = { version = "0.2" }
 structopt = { version = "0.3", default-features = false }
+env_logger = "0.9"
 #clap = "2.0"
 
 [profile.release]

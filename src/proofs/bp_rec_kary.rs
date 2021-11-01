@@ -228,6 +228,12 @@ impl<G: Group, B: Proof<IpaRelation<G>>> Proof<IpaRelation<G>> for KaryBp<G, B> 
             }
         }
     }
+    fn proof_size(p: &Self::Proof) -> usize {
+        match p {
+            BpProof::Rec{pos_cross, rec, ..} => 2 * pos_cross.len() + Self::proof_size(rec),
+            BpProof::Base(b) => B::proof_size(b),
+        }
+    }
 }
 
 pub enum BpProof<G: Group, B: Proof<IpaRelation<G>>> {

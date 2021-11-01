@@ -32,6 +32,7 @@ arg_enum! {
 }
 
 fn main() {
+    env_logger::init();
     let opt = Opt::from_args();
     match opt.curve {
         Pair::Pasta => test_ipa(vec![opt.n], 1, llbp::<PastaPair>(opt.k, opt.r)),
