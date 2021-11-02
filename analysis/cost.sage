@@ -149,7 +149,7 @@ def print_size_table(size_fn, cs_fn):
             best_k_guess = float(n_val ^ (1 / (r_val + 1)))
             best_k_best = minimize(best_residual_fn, [best_k_guess], verbose=False)[0]
             best_cs = float(cs_fn(n=n_val, r=r_val, k=best_k_best))
-            line.append(f" k={best_k_best:6.4} cs={best_cs}")
+            line.append(f" r={r_val} k={round(best_k_best):2} cs={best_cs}")
             print(" ".join(line))
             if sizes[-1] < sizes[-2]:
                 r_vals.append(r_vals[-1] + 1)
