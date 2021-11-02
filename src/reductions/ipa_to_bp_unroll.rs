@@ -5,7 +5,7 @@ use crate::{
         ipa::IpaRelation,
     },
     util::{
-        ip, msm, neg_powers, powers, rand_vec, scale_vec, sum_vecs, zero_pad_to_multiple,
+        ip, msm, neg_powers, powers, rand_vec, scale_vec, sum_vecs, zero_intersperse_to_multiple,
         CollectIter,
     },
     FiatShamirRng, Reduction, Relation,
@@ -13,6 +13,7 @@ use crate::{
 use ark_ff::{One, UniformRand};
 use std::iter::once;
 use std::marker::PhantomData;
+use log::debug;
 
 pub struct IpaToBpUnroll<C: Pair> {
     pub k: usize,
@@ -81,10 +82,11 @@ pub fn prove_step<C: Pair>(
     fs: &mut FiatShamirRng,
 ) {
     let k = instance.k;
-    let a = zero_pad_to_multiple(&witness.a, k);
-    let b = zero_pad_to_multiple(&witness.b, k);
-    let a_gen = zero_pad_to_multiple(&instance.gens.a_gens, k);
-    let b_gen = zero_pad_to_multiple(&instance.gens.b_gens, k);
+    let a = zero_intersperse_to_multiple(&witness.a, k);
+    debug!("Folding {} by {}: pad to {}", witness.a.len(), k, a.len());
+    let b = zero_intersperse_to_multiple(&witness.b, k);
+    let a_gen = zero_intersperse_to_multiple(&instance.gens.a_gens, k);
+    let b_gen = zero_intersperse_to_multiple(&instance.gens.b_gens, k);
     let q = instance.gens.ip_gen;
     debug_assert_eq!(a.len() % k, 0);
     debug_assert_eq!(b.len() % k, 0);
@@ -106,7 +108,7 @@ pub fn prove_step<C: Pair>(
             a[i].iter().chain(b[j]).chain(once(&ip(&a[i], &b[j]))),
         )
     };
-    // Then the positive cross-term T[i] for i in {0,..,k-2{ is
+    // Then the positive cross-term T[i] for i in {0,..,k-2} is
     // \sum j={1,..k-i} X[i+j,j]
     // should be multiplied by x^(i+1)
     let pos_cross: Vec<C::G1> = (0..k - 1)
@@ -180,7 +182,7 @@ pub fn prove_step<C: Pair>(
     // );
     instance.gens.a_gens = a_gen_next;
     instance.gens.b_gens = b_gen_next;
-    instance.gens.vec_size /= k;
+    instance.gens.vec_size = (instance.gens.vec_size - 1) / k + 1;
     instance.challs.push(x);
     instance.commits.push(commit);
     instance.commit_gens.push(commit_gens);
@@ -208,8 +210,8 @@ pub fn verify_step<C: Pair>(
     fs: &mut FiatShamirRng,
 ) {
     let k = instance.k;
-    let a_gen = zero_pad_to_multiple(&instance.gens.a_gens, k);
-    let b_gen = zero_pad_to_multiple(&instance.gens.b_gens, k);
+    let a_gen = zero_intersperse_to_multiple(&instance.gens.a_gens, k);
+    let b_gen = zero_intersperse_to_multiple(&instance.gens.b_gens, k);
     debug_assert_eq!(a_gen.len() % k, 0);
     debug_assert_eq!(b_gen.len() % k, 0);
 
@@ -241,7 +243,7 @@ pub fn verify_step<C: Pair>(
     );
     instance.gens.a_gens = a_gen_next;
     instance.gens.b_gens = b_gen_next;
-    instance.gens.vec_size /= k;
+    instance.gens.vec_size = (instance.gens.vec_size - 1) / k + 1;
     instance.challs.push(x);
     instance.commits.push(commit.clone());
     instance.commit_gens.push(commit_gens);

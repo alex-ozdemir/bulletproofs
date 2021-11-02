@@ -1,4 +1,4 @@
-use crate::{util::{msm, zero_pad_to_multiple}, Relation};
+use crate::{util::{msm, zero_pad_to_two_power}, Relation};
 use ark_ec::group::Group;
 use ark_ff::Field;
 use rand::Rng;
@@ -42,9 +42,9 @@ impl<G: Group> IpaGens<G> {
         let mut a_gen = self.a_gens.clone();
         let mut b_gen = self.b_gens.clone();
         let mut c_i = 0;
+        a_gen = zero_pad_to_two_power(&a_gen);
+        b_gen = zero_pad_to_two_power(&b_gen);
         while a_gen.len() > 1 {
-            a_gen = zero_pad_to_multiple(&a_gen, 2);
-            b_gen = zero_pad_to_multiple(&b_gen, 2);
             let n = a_gen.len() / 2;
             let x = self.challenges[c_i].clone();
             let x_inv = x.inverse().unwrap();

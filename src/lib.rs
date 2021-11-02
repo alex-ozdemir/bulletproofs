@@ -12,9 +12,9 @@ pub mod relations;
 pub mod util;
 
 use ark_ec::group::Group;
+use log::debug;
 use rand::Rng;
 use relations::ipa::{IpaInstance, IpaRelation};
-use log::debug;
 
 pub trait Relation {
     type Inst;
@@ -85,6 +85,23 @@ pub fn test_ipa<G: Group, I: Proof<IpaRelation<G>>>(sizes: Vec<usize>, reps: usi
             i.verify(&instance, &proof, &mut fs_rng);
         }
     }
+}
+
+/// Measure IPA size for a random instance-witness pair
+///
+/// ## Arguments
+///
+/// * `sizes`: vector lengths
+/// * `reps`: repetitions per length
+/// * `i`: the IPA
+pub fn ipa_size<G: Group, I: Proof<IpaRelation<G>>>(size: usize, i: I) -> usize {
+    let rng = &mut ark_std::test_rng();
+    let (instance, witness) = IpaInstance::<G>::sample_from_length(rng, size);
+    IpaRelation::check(&instance, &witness);
+    let fs_seed: [u8; 32] = rng.gen();
+    let mut fs_rng = FiatShamirRng::from_seed(&fs_seed);
+    let proof = i.prove(&instance, &witness, &mut fs_rng);
+    I::proof_size(&proof)
 }
 
 #[cfg(test)]

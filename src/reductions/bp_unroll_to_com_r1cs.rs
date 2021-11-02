@@ -13,6 +13,7 @@ use ark_relations::r1cs::{
 };
 use derivative::Derivative;
 use std::marker::PhantomData;
+use log::debug;
 
 #[derive(Derivative)]
 #[derivative(Default(bound = ""))]
@@ -58,6 +59,7 @@ impl<C: Pair> Reduction for UnrollToComR1cs<C> {
         assert_eq!(full_assignment.len(), m);
         let num_cross_terms = (x.k - 1) * 2;
         let num_aff_coords = num_cross_terms * 2;
+        debug!("R1CS: n={}, m={}", mats.num_constraints, m);
         let x_r1cs = ComR1csInstance {
             m,
             r: x.r,
@@ -67,6 +69,7 @@ impl<C: Pair> Reduction for UnrollToComR1cs<C> {
             ss: x.commits.clone(),
             r1cs: mats,
         };
+        debug!("Number of constraints: {}", x_r1cs.n);
         let zs = w
             .cross_terms
             .iter()

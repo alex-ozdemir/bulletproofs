@@ -98,6 +98,7 @@ def bp_pf_size(n):
 vars = var("l m k r n")
 theory_size = pf_size(k, r, n, theory_cs_costs)
 actual_size = pf_size(k, r, n, actual_cs_costs)
+actual_cs = constraints(k, r, n, actual_cs_costs)
 baseline_size = bp_pf_size(n)
 
 
@@ -107,7 +108,7 @@ print("Cs costs impl     :", actual_cs_costs.mk_func(l, m))
 # print("theory,  given ark:", ark_prims.to_cs_cost_model().mk_func(l, m))
 
 
-def print_size_table(size_fn):
+def print_size_table(size_fn, cs_fn):
     r_vals = list(range(1, 7))
 
     bigger_rs_needed = True
@@ -146,7 +147,8 @@ def print_size_table(size_fn):
             best_residual_fn = size_fn(r=r_val, n=n_val)
             best_k_guess = float(n_val ^ (1 / (r_val + 1)))
             best_k_best = minimize(best_residual_fn, [best_k_guess], verbose=False)[0]
-            line.append(f" k={best_k_best}")
+            best_cs = float(cs_fn(n=n_val, r=r_val, k=best_k_best))
+            line.append(f" k={best_k_best:6.4} cs={best_cs}")
             print(" ".join(line))
             if sizes[-1] < sizes[-2]:
                 r_vals.append(r_vals[-1] + 1)
@@ -155,4 +157,4 @@ def print_size_table(size_fn):
 
 
 # print_size_table(actual_size)
-print_size_table(theory_size)
+print_size_table(actual_size, actual_cs)
