@@ -1,9 +1,9 @@
 #!/usr/bin/env zsh
 
 echo k,m,cs
-for k in 100 300 1000 3000 10000
+for k in $(seq 6 6 144)
 do
-    for m in 10 20 30 40
+    for m in $(seq 2 2 20)
     do
         cs=$(cargo run --release --example measure_constraints $k $m -c pasta)
         echo $k,$m,$cs

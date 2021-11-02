@@ -12,6 +12,7 @@ pub mod relations;
 pub mod util;
 
 use ark_ec::group::Group;
+use curves::Pair;
 use log::debug;
 use rand::Rng;
 use relations::ipa::{IpaInstance, IpaRelation};
@@ -92,7 +93,6 @@ pub fn test_ipa<G: Group, I: Proof<IpaRelation<G>>>(sizes: Vec<usize>, reps: usi
 /// ## Arguments
 ///
 /// * `sizes`: vector lengths
-/// * `reps`: repetitions per length
 /// * `i`: the IPA
 pub fn ipa_size<G: Group, I: Proof<IpaRelation<G>>>(size: usize, i: I) -> usize {
     let rng = &mut ark_std::test_rng();
@@ -102,6 +102,25 @@ pub fn ipa_size<G: Group, I: Proof<IpaRelation<G>>>(size: usize, i: I) -> usize 
     let mut fs_rng = FiatShamirRng::from_seed(&fs_seed);
     let proof = i.prove(&instance, &witness, &mut fs_rng);
     I::proof_size(&proof)
+}
+
+/// Measure R1CS constraints size for a random instance-witness pair
+///
+/// ## Arguments
+///
+/// * `size`: lengths
+pub fn constraints<C: Pair>(size: usize, k: usize, r: usize) -> usize {
+    let reduction = reductions::combinator::Sequence::new(
+        reductions::ipa_to_bp_unroll::IpaToBpUnroll::<C>::new(k, r),
+        reductions::bp_unroll_to_com_r1cs::UnrollToComR1cs::default(),
+    );
+    let rng = &mut ark_std::test_rng();
+    let (instance, witness) = IpaInstance::<C::G1>::sample_from_length(rng, size);
+    //IpaRelation::check(&instance, &witness);
+    let fs_seed: [u8; 32] = rng.gen();
+    let mut fs_rng = FiatShamirRng::from_seed(&fs_seed);
+    let (_proof, x, _w) = reduction.prove(&instance, &witness, &mut fs_rng);
+    x.n
 }
 
 #[cfg(test)]

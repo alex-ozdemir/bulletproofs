@@ -1,4 +1,5 @@
 use ark_bp::{
+    constraints,
     curves::models::{JubJubPair, PastaPair, VellasPair},
     ipa_size,
     proofs::llbp::llbp,
@@ -26,9 +27,9 @@ struct Opt {
     #[structopt(short, long, default_value = "pasta")]
     curve: Pair,
 
-    /// print proof size and exit
-    #[structopt(short, long)]
-    size: bool,
+    /// Mode
+    #[structopt(short, long, default_value = "check")]
+    mode: Mode,
 }
 
 arg_enum! {
@@ -40,23 +41,43 @@ arg_enum! {
     }
 }
 
+arg_enum! {
+    #[derive(Debug)]
+    enum Mode {
+        Check,
+        Constraints,
+        Size,
+    }
+}
+
 fn main() {
     env_logger::init();
     let opt = Opt::from_args();
-    if opt.size {
-        println!(
-            "Size: {}",
-            match opt.curve {
-                Pair::Pasta => ipa_size(opt.n, llbp::<PastaPair>(opt.k, opt.r)),
-                Pair::Vellas => ipa_size(opt.n, llbp::<VellasPair>(opt.k, opt.r)),
-                Pair::Jubjub => ipa_size(opt.n, llbp::<JubJubPair>(opt.k, opt.r)),
-            }
-        );
-    } else {
-        match opt.curve {
+    match opt.mode {
+        Mode::Check => match opt.curve {
             Pair::Pasta => test_ipa(vec![opt.n], 1, llbp::<PastaPair>(opt.k, opt.r)),
             Pair::Vellas => test_ipa(vec![opt.n], 1, llbp::<VellasPair>(opt.k, opt.r)),
             Pair::Jubjub => test_ipa(vec![opt.n], 1, llbp::<JubJubPair>(opt.k, opt.r)),
+        },
+        Mode::Constraints => {
+            println!(
+                "Size: {}",
+                match opt.curve {
+                    Pair::Pasta => constraints::<PastaPair>(opt.n, opt.k, opt.r),
+                    Pair::Vellas => constraints::<PastaPair>(opt.n, opt.k, opt.r),
+                    Pair::Jubjub => constraints::<PastaPair>(opt.n, opt.k, opt.r),
+                }
+            );
+        }
+        Mode::Size => {
+            println!(
+                "Size: {}",
+                match opt.curve {
+                    Pair::Pasta => ipa_size(opt.n, llbp::<PastaPair>(opt.k, opt.r)),
+                    Pair::Vellas => ipa_size(opt.n, llbp::<VellasPair>(opt.k, opt.r)),
+                    Pair::Jubjub => ipa_size(opt.n, llbp::<JubJubPair>(opt.k, opt.r)),
+                }
+            );
         }
     }
 }

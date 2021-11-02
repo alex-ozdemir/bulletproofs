@@ -47,7 +47,8 @@ class CircuitPrimitiveCosts(NamedTuple):
 # jubjub/bls12_381_g1
 # actual_cs_costs = ConstraintCostModel(1941.2, 1927.5, -8.2, 2622.5)
 # pasta
-actual_cs_costs = ConstraintCostModel(1751.7, 1299, -1.7, 1799)
+actual_cs_costs = ConstraintCostModel(1765.4, 1288, -0.6, 1800.8)
+#actual_cs_costs = ConstraintCostModel(1751.7, 1299, -1.7, 1799)
 
 # pasta, ark
 pasta_prims = CircuitPrimitiveCosts(
@@ -77,13 +78,13 @@ theory_cs_costs = pasta_prims.to_cs_cost_model()
 
 
 def constraints(k, r, n, cs_costs: ConstraintCostModel):
-    fs_msm_size = (k - 1) * r + 1
+    fs_msm_size = 2 * (k - 1) * r + 1
     ip_width = n / k ^ r
     return cs_costs.mk_func(fs_msm_size, ip_width)
 
 
 def pf_size(k, r, n, cs_costs: ConstraintCostModel):
-    ipa_elements = constraints(k, r, n, cs_costs) + k
+    ipa_elements = 2 * constraints(k, r, n, cs_costs)
     return (
         r
         + 1  # commitments at each unroll
