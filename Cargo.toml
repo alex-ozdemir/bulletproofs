@@ -8,7 +8,7 @@ edition = "2018"
 [dependencies]
 ark-ec = "0.3"
 ark-ff = "0.3"
-ark-std = { version = "0.3", default-features = false, features = [] }
+ark-std = { version = "0.3", default-features = false, features = ["parallel"] }
 #ark-std = { version = "0.3", default-features = false, features = [ "print-trace" ] }
 ark-marlin = "0.3"
 #ark-r1cs-std = { version = "0.3.1", features = [] }

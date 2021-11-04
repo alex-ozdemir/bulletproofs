@@ -109,9 +109,9 @@ pub fn pippenger_msm<'a, G: Group>(
     // Each window is of size `c`.
     // We divide up the bits 0..num_bits into windows of size `c`, and
     // in parallel process each such window.
-    let window_sums: Vec<_> = window_starts.into_iter()
+    // let window_sums: Vec<_> = window_starts.into_iter()
     // uncomment for parallelism
-    //let window_sums: Vec<_> = ark_std::cfg_into_iter!(window_starts)
+    let window_sums: Vec<_> = ark_std::cfg_into_iter!(window_starts)
         .map(|w_start| {
             let mut res = zero;
             // We don't need the "zero" bucket, so we only have 2^c - 1 buckets.
