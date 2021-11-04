@@ -63,6 +63,7 @@ dependencies = [
  "env_logger",
  "log",
  "rand",
+ "rayon",
  "structopt",
  "tracing",
  "tracing-subscriber",

@@ -1,9 +1,12 @@
 use ark_ec::group::Group;
 use ark_ff::{Field, UniformRand, Zero};
-use ark_std::{cfg_iter, cfg_iter_mut};
 use rand::Rng;
 use std::ops::Range;
 use std::ops::{AddAssign, MulAssign};
+
+use ark_std::{cfg_into_iter, cfg_iter, cfg_iter_mut};
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
 
 pub mod msm;
 
@@ -15,23 +18,30 @@ pub fn ip<F: Field>(a: &[F], b: &[F]) -> F {
     cfg_iter!(a).zip(b).map(|(a, b)| *a * b).sum()
 }
 
-pub fn scale_vec<S: Clone, F: MulAssign<S> + Clone>(s: &S, b: &[F]) -> Vec<F> {
-    let mut b = b.to_vec();
-    cfg_iter_mut!(b).for_each(|b| *b *= s.clone());
-    b
+pub fn scale_vec<S: Clone + Sync + Send, F: MulAssign<S> + Clone + Sync + Send>(
+    s: &S,
+    b: &[F],
+) -> Vec<F> {
+    cfg_into_iter!(b)
+        .map(|b| {
+            let mut c = b.clone();
+            c *= s.clone();
+            c
+        })
+        .collect()
 }
 
 #[track_caller]
-pub fn sum_vecs<F: AddAssign + Zero + Clone, I: IntoIterator<Item = Vec<F>>>(
+pub fn sum_vecs<F: AddAssign + Zero + Clone + Send + Sync, I: IntoIterator<Item = Vec<F>>>(
     i: I,
     len: usize,
 ) -> Vec<F> {
     i.into_iter()
         .fold(vec![F::zero(); len], |mut acc, summand| {
             assert_eq!(summand.len(), len);
-            for (a, b) in cfg_iter_mut!(acc).zip(summand) {
+            cfg_iter_mut!(acc).zip(summand).for_each(|(a, b)| {
                 *a += b;
-            }
+            });
             acc
         })
 }

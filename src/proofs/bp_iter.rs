@@ -6,6 +6,11 @@ use crate::{
 use ark_ec::group::Group;
 use ark_ff::{Field, One, UniformRand};
 use std::marker::PhantomData;
+use std::iter::once;
+
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
+use ark_std::cfg_iter;
 
 pub struct Bp<G>(PhantomData<G>);
 
@@ -65,24 +70,20 @@ impl<G: Group> Proof<IpaRelation<G>> for Bp<G> {
             fs.absorb(&r);
             let x: G::ScalarField = G::ScalarField::rand(fs);
             let x_inv = x.inverse().unwrap();
-            let a_next: Vec<G::ScalarField> = a[..n]
-                .iter()
+            let a_next: Vec<G::ScalarField> = cfg_iter!(a[..n])
                 .zip(&a[n..])
                 .map(|(l, r)| x * *l + x_inv * *r)
                 .collect();
-            let b_next: Vec<G::ScalarField> = b[..n]
-                .iter()
+            let b_next: Vec<G::ScalarField> = cfg_iter!(b[..n])
                 .zip(&b[n..])
                 .map(|(l, r)| x_inv * *l + x * *r)
                 .collect();
             let p_next = l.mul(&x.square()) + r.mul(&x_inv.square()) + p;
-            let a_gen_next: Vec<G> = a_gen[..n]
-                .iter()
+            let a_gen_next: Vec<G> = cfg_iter!(a_gen[..n])
                 .zip(&a_gen[n..])
                 .map(|(l, r)| l.mul(&x_inv) + r.mul(&x))
                 .collect();
-            let b_gen_next: Vec<G> = b_gen[..n]
-                .iter()
+            let b_gen_next: Vec<G> = cfg_iter!(b_gen[..n])
                 .zip(&b_gen[n..])
                 .map(|(l, r)| l.mul(&x) + r.mul(&x_inv))
                 .collect();
