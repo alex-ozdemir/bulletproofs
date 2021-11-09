@@ -81,3 +81,38 @@ for log2N in range(1, 31):
         key=lambda p: p[4],
     )
     print(options[0])
+
+print("declare -A ks\nks=(")
+for log2N in range(1, 31):
+    N = 2 ** log2N
+    options = sorted(
+        sorted(
+            [
+                (log2N, N, r, k, LLBPConfig(N, k, r, model).proof_size(), log2N*2+2)
+                for k in range(6, 40)
+                for r in range(1, 7)
+            ]
+        ),
+        key=lambda p: p[4],
+    )
+    k = options[0][3]
+    r = options[0][2]
+    print(f"  {log2N} {k}")
+print(")")
+print("declare -A rs\nrs=(")
+for log2N in range(1, 31):
+    N = 2 ** log2N
+    options = sorted(
+        sorted(
+            [
+                (log2N, N, r, k, LLBPConfig(N, k, r, model).proof_size(), log2N*2+2)
+                for k in range(6, 40)
+                for r in range(1, 7)
+            ]
+        ),
+        key=lambda p: p[4],
+    )
+    k = options[0][3]
+    r = options[0][2]
+    print(f"  {log2N} {r}")
+print(")")

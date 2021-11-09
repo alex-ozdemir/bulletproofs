@@ -120,7 +120,6 @@ impl<G: Group> Proof<IpaRelation<G>> for Bp<G> {
             let x = G::ScalarField::rand(fs);
             challenges.push(x);
         }
-        dbg!(&challenges);
         let scalars = Self::scalars_from_challenges(&challenges);
         let scalars_inv: Vec<G::ScalarField> =
             scalars.iter().map(|s| s.inverse().unwrap()).collect();
