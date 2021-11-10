@@ -174,7 +174,7 @@ elif args.output == "table":
                         LLBPConfig(N, k, r, model).proof_size(),
                         log2N * 2 + 2,
                     )
-                    for k in range(6, 40)
+                    for k in range(6, 1000)
                 ],
                 key=lambda p: (p[5], p[4]),
             )[0]
