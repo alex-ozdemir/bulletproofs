@@ -55,4 +55,4 @@ ggarrange(
     nrow=1,
     common.legend=TRUE,
     legend="right")
-ggsave("main_plot.pdf", units = "in", width = 6, height = 3)
+ggsave("main_plot.pdf", units = "in", width = 6, height = 2.0)
