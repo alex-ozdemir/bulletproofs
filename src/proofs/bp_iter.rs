@@ -6,7 +6,6 @@ use crate::{
 use ark_ec::group::Group;
 use ark_ff::{Field, One, UniformRand};
 use std::marker::PhantomData;
-use std::iter::once;
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
