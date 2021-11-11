@@ -4,6 +4,7 @@ use crate::{
         bp_unroll::{CrossTerms, UnrollRelation, UnrolledBpInstance, UnrolledBpWitness},
         ipa::IpaRelation,
     },
+    timed,
     util::{
         ip, msm, neg_powers, powers, rand_vec, scale_vec, sum_vecs, zero_intersperse_to_multiple,
         CollectIter,
@@ -11,9 +12,9 @@ use crate::{
     FiatShamirRng, Reduction, Relation,
 };
 use ark_ff::{One, UniformRand};
+use log::debug;
 use std::iter::once;
 use std::marker::PhantomData;
-use log::debug;
 
 pub struct IpaToBpUnroll<C: Pair> {
     pub k: usize,
@@ -46,9 +47,11 @@ impl<C: Pair> Reduction for IpaToBpUnroll<C> {
         <Self::To as Relation>::Inst,
         <Self::To as Relation>::Wit,
     ) {
-        let (mut u_x, mut u_w) = UnrolledBpWitness::from_ipa(self.k, &x, &w);
-        prove_unroll(self.r, &mut u_x, &mut u_w, fs);
-        (u_x.commits.clone(), u_x, u_w)
+        timed!(|| "proving ipa_unroll", {
+            let (mut u_x, mut u_w) = UnrolledBpWitness::from_ipa(self.k, &x, &w);
+            prove_unroll(self.r, &mut u_x, &mut u_w, fs);
+            (u_x.commits.clone(), u_x, u_w)
+        })
     }
     fn verify(
         &self,
@@ -56,23 +59,26 @@ impl<C: Pair> Reduction for IpaToBpUnroll<C> {
         pf: &Self::Proof,
         fs: &mut FiatShamirRng,
     ) -> <Self::To as Relation>::Inst {
-        let mut u_x = UnrolledBpInstance::from_ipa(self.k, &x);
-        verify_unroll(self.r, &mut u_x, &pf, fs);
-        u_x
+        timed!(|| "verifying ipa_unroll", {
+            let mut u_x = UnrolledBpInstance::from_ipa(self.k, &x);
+            verify_unroll(self.r, &mut u_x, &pf, fs);
+            u_x
+        })
     }
     fn proof_size(p: &Self::Proof) -> usize {
         p.len()
     }
 }
 
+#[allow(unused_variables)]
 pub fn prove_unroll<C: Pair>(
     r: usize,
     instance: &mut UnrolledBpInstance<C>,
     witness: &mut UnrolledBpWitness<C::G1>,
     fs: &mut FiatShamirRng,
 ) {
-    for _ in 0..r {
-        prove_step(instance, witness, fs);
+    for i in 0..r {
+        timed!(|| format!("step {}", i), prove_step(instance, witness, fs));
     }
 }
 
@@ -200,7 +206,7 @@ pub fn verify_unroll<C: Pair>(
 ) {
     assert_eq!(pf.len(), r);
     for i in 0..r {
-        verify_step(instance, &pf[i], fs);
+        timed!(|| format!("step {}", i), verify_step(instance, &pf[i], fs));
     }
 }
 

@@ -8,7 +8,7 @@ use std::collections::BinaryHeap;
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
-use ark_std::cfg_into_iter;
+use ark_std::{cfg_into_iter, start_timer, end_timer};
 
 #[track_caller]
 pub fn msm<'a, G: Group>(
@@ -96,6 +96,7 @@ pub fn pippenger_msm<'a, G: Group>(
         .zip(scalars.into_iter().map(|s| s.into_repr()))
         .unzip();
     let size = bases.len();
+    let timer = start_timer!(|| format!("msm size: {}", size));
     let scalars_and_bases_iter = scalars.iter().zip(bases).filter(|(s, _)| !s.is_zero());
 
     let c = if size < 32 {
@@ -176,7 +177,7 @@ pub fn pippenger_msm<'a, G: Group>(
     let lowest = *window_sums.first().unwrap();
 
     // We're traversing windows from high to low.
-    lowest
+    let r = lowest
         + &window_sums[1..]
             .iter()
             .rev()
@@ -186,7 +187,9 @@ pub fn pippenger_msm<'a, G: Group>(
                     total.double_in_place();
                 }
                 total
-            })
+            });
+    end_timer!(timer);
+    r
 }
 
 #[cfg(test)]

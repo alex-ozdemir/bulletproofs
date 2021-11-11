@@ -74,9 +74,10 @@ rs=(
   29 6
   30 6
 )
+
 echo pf,log2n,n,trial,pf_wall_time,pf_size,ver_wall_time
 trials=3
-max_log2n=21
+max_log2n=11
 for t in $(seq 1 $trials)
 do
     for log2n in $(seq 5 $max_log2n)

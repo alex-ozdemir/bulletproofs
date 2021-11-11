@@ -18,6 +18,17 @@ use rand::Rng;
 use relations::ipa::{IpaInstance, IpaRelation};
 use std::time::Instant;
 
+#[macro_export]
+macro_rules! timed {
+    ($label:expr, $val:expr) => {{
+        use ::ark_std::{start_timer, end_timer};
+        let timer = start_timer!($label);
+        let val = $val;
+        end_timer!(timer);
+        val
+    }};
+}
+
 pub trait Relation {
     type Inst;
     type Wit;
@@ -81,14 +92,14 @@ pub fn test_ipa<G: Group, I: Proof<IpaRelation<G>>>(sizes: Vec<usize>, reps: usi
             let fs_seed: [u8; 32] = rng.gen();
             let mut fs_rng = FiatShamirRng::from_seed(&fs_seed);
             let pf_start = Instant::now();
-            let proof = i.prove(&instance, &witness, &mut fs_rng);
+            let proof = timed!(|| "proving", i.prove(&instance, &witness, &mut fs_rng));
             let pf_end = Instant::now();
             debug!(target: "pf_time", "Proof time (s): {}", (pf_end-pf_start).as_secs_f64());
             let proof_size = I::proof_size(&proof);
             debug!(target: "pf_size", "Proof size: {}", proof_size);
             let mut fs_rng = FiatShamirRng::from_seed(&fs_seed);
             let ver_start = Instant::now();
-            i.verify(&instance, &proof, &mut fs_rng);
+            timed!(|| "verifying", i.verify(&instance, &proof, &mut fs_rng));
             let ver_end = Instant::now();
             debug!(target: "ver_time", "Verifier time (s): {}", (ver_end-ver_start).as_secs_f64());
         }
@@ -144,7 +155,7 @@ pub mod test {
     fn test_bp_ipa_bls_g1() {
         type G = <Bls12_381 as PairingEngine>::G1Projective;
         let i = bp_iter::Bp::<G>::default();
-        test_ipa(vec![1, 2, 4, 8, 16], 1, i);
+        test_ipa(vec![1, 2, 4, 8, 16, 17], 1, i);
     }
 
     #[test]

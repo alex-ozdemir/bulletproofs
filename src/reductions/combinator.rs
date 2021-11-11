@@ -149,3 +149,35 @@ impl<R: Relation, P: Reduction<From = R, To = True>> Proof<R> for TrueReductionT
         P::proof_size(p)
     }
 }
+
+pub struct ProofToTrueReduction<R: Relation, P: Proof<R>>(pub P, pub PhantomData<R>);
+
+impl<R: Relation, P: Proof<R>> ProofToTrueReduction<R, P> {
+    pub fn new(pf: P) -> Self {
+        Self(pf, Default::default())
+    }
+}
+
+impl<R: Relation, P: Proof<R>> Reduction for ProofToTrueReduction<R, P> {
+    type From = R;
+    type To = True;
+    type Proof = <P as Proof<R>>::Proof;
+    fn prove(
+        &self,
+        x: &<R as Relation>::Inst,
+        w: &<R as Relation>::Wit,
+        fs: &mut FiatShamirRng,
+    ) -> (
+        Self::Proof,
+        <Self::To as Relation>::Inst,
+        <Self::To as Relation>::Wit,
+    ) {
+        (self.0.prove(x, w, fs), (), ())
+    }
+    fn verify(&self, x: &<R as Relation>::Inst, pf: &Self::Proof, fs: &mut FiatShamirRng) {
+        self.0.verify(x, pf, fs);
+    }
+    fn proof_size(p: &Self::Proof) -> usize {
+        P::proof_size(p)
+    }
+}

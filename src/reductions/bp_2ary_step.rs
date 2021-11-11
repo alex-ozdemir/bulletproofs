@@ -8,6 +8,10 @@ use ark_ff::{Field, UniformRand};
 use derivative::Derivative;
 use std::marker::PhantomData;
 
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
+use ark_std::cfg_iter;
+
 #[derive(Derivative)]
 #[derivative(Default(bound = ""))]
 pub struct Bp2aryStep<G: Group>(pub PhantomData<G>);
@@ -42,24 +46,20 @@ impl<G: Group> Reduction for Bp2aryStep<G> {
         fs.absorb(&r);
         let x: G::ScalarField = G::ScalarField::rand(fs);
         let x_inv = x.inverse().unwrap();
-        let a_next: Vec<G::ScalarField> = a[..n]
-            .iter()
+        let a_next: Vec<G::ScalarField> = cfg_iter!(a[..n])
             .zip(&a[n..])
             .map(|(l, r)| x * *l + x_inv * *r)
             .collect();
-        let b_next: Vec<G::ScalarField> = b[..n]
-            .iter()
+        let b_next: Vec<G::ScalarField> = cfg_iter!(b[..n])
             .zip(&b[n..])
             .map(|(l, r)| x_inv * *l + x * *r)
             .collect();
         let p_next = l.mul(&x.square()) + r.mul(&x_inv.square()) + p;
-        let a_gen_next: Vec<G> = a_gen[..n]
-            .iter()
+        let a_gen_next: Vec<G> = cfg_iter!(a_gen[..n])
             .zip(&a_gen[n..])
             .map(|(l, r)| l.mul(&x_inv) + r.mul(&x))
             .collect();
-        let b_gen_next: Vec<G> = b_gen[..n]
-            .iter()
+        let b_gen_next: Vec<G> = cfg_iter!(b_gen[..n])
             .zip(&b_gen[n..])
             .map(|(l, r)| l.mul(&x) + r.mul(&x_inv))
             .collect();
@@ -100,13 +100,11 @@ impl<G: Group> Reduction for Bp2aryStep<G> {
         let x: G::ScalarField = G::ScalarField::rand(fs);
         let x_inv = x.inverse().unwrap();
         let p_next = l.mul(&x.square()) + r.mul(&x_inv.square()) + p;
-        let a_gen_next: Vec<G> = a_gen[..n]
-            .iter()
+        let a_gen_next: Vec<G> = cfg_iter!(a_gen[..n])
             .zip(&a_gen[n..])
             .map(|(l, r)| l.mul(&x_inv) + r.mul(&x))
             .collect();
-        let b_gen_next: Vec<G> = b_gen[..n]
-            .iter()
+        let b_gen_next: Vec<G> = cfg_iter!(b_gen[..n])
             .zip(&b_gen[n..])
             .map(|(l, r)| l.mul(&x) + r.mul(&x_inv))
             .collect();

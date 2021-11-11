@@ -1,15 +1,17 @@
 use crate::{
     relations::ipa::{IpaInstance, IpaRelation, IpaWitness},
-    util::{ip, msm},
+    timed,
+    util::{ip, msm, zero_pad_to_two_power},
     FiatShamirRng, Proof,
 };
 use ark_ec::group::Group;
 use ark_ff::{Field, One, UniformRand};
+use std::iter::once;
 use std::marker::PhantomData;
 
+use ark_std::{cfg_iter, end_timer, start_timer};
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
-use ark_std::cfg_iter;
 
 pub struct Bp<G>(PhantomData<G>);
 
@@ -21,19 +23,22 @@ impl<G> std::default::Default for Bp<G> {
 
 impl<G: Group> Bp<G> {
     fn scalars_from_challenges(challs: &[G::ScalarField]) -> Vec<G::ScalarField> {
-        if challs.len() == 0 {
-            vec![G::ScalarField::one()]
-        } else {
-            let mut left = Self::scalars_from_challenges(&challs[1..]);
-            let n = left.len();
-            let chall = challs[0];
-            let chall_inv = chall.inverse().unwrap();
-            for i in 0..n {
-                left.push(left[i] * chall);
-                left[i] *= chall_inv;
+        timed!(
+            || "compute MSM scalars",
+            if challs.len() == 0 {
+                vec![G::ScalarField::one()]
+            } else {
+                let mut left = Self::scalars_from_challenges(&challs[1..]);
+                let n = left.len();
+                let chall = challs[0];
+                let chall_inv = chall.inverse().unwrap();
+                for i in 0..n {
+                    left.push(left[i] * chall);
+                    left[i] *= chall_inv;
+                }
+                left
             }
-            left
-        }
+        )
     }
 }
 
@@ -46,23 +51,32 @@ impl<G: Group> Proof<IpaRelation<G>> for Bp<G> {
         witness: &IpaWitness<G::ScalarField>,
         fs: &mut FiatShamirRng,
     ) -> Self::Proof {
+        let timer = start_timer!(|| "proving BP");
         let mut ls = Vec::new();
         let mut rs = Vec::new();
-        let mut a = witness.a.clone();
-        let mut b = witness.b.clone();
-        let mut a_gen = instance.gens.a_gens.clone();
-        let mut b_gen = instance.gens.b_gens.clone();
+        let mut a = zero_pad_to_two_power(&witness.a);
+        let mut b = zero_pad_to_two_power(&witness.b);
+        let mut a_gen = zero_pad_to_two_power(&instance.gens.a_gens);
+        let mut b_gen = zero_pad_to_two_power(&instance.gens.b_gens);
         let mut p = instance.result;
         let q = instance.gens.ip_gen;
         while a.len() > 1 {
             assert!(a.len() % 2 == 0);
             let n = a.len() / 2;
-            let l = msm(&a_gen[n..], &a[..n])
-                + msm(&b_gen[..n], &b[n..])
-                + q.mul(&ip(&a[..n], &b[n..]));
-            let r = msm(&a_gen[..n], &a[n..])
-                + msm(&b_gen[n..], &b[..n])
-                + q.mul(&ip(&a[n..], &b[..n]));
+            let l = msm(
+                a_gen[n..].iter().chain(&b_gen[..n]).chain(once(&q)),
+                a[..n]
+                    .iter()
+                    .chain(&b[n..])
+                    .chain(once(&ip(&a[..n], &b[n..]))),
+            );
+            let r = msm(
+                a_gen[..n].iter().chain(&b_gen[n..]).chain(once(&q)),
+                a[n..]
+                    .iter()
+                    .chain(&b[..n])
+                    .chain(once(&ip(&a[n..], &b[..n]))),
+            );
             ls.push(l);
             rs.push(r);
             fs.absorb(&l);
@@ -102,6 +116,7 @@ impl<G: Group> Proof<IpaRelation<G>> for Bp<G> {
         assert_eq!(b.len(), 1);
         let final_a = a.pop().unwrap();
         let final_b = b.pop().unwrap();
+        end_timer!(timer);
         BpProof {
             ls,
             rs,
@@ -111,7 +126,10 @@ impl<G: Group> Proof<IpaRelation<G>> for Bp<G> {
     }
 
     fn verify(&self, instance: &IpaInstance<G>, proof: &Self::Proof, fs: &mut FiatShamirRng) {
-        assert!(instance.gens.vec_size.is_power_of_two());
+        let timer = start_timer!(|| "verifying BP");
+        let a_gen = zero_pad_to_two_power(&instance.gens.a_gens);
+        let b_gen = zero_pad_to_two_power(&instance.gens.b_gens);
+        assert!(a_gen.len().is_power_of_two());
         let mut challenges: Vec<G::ScalarField> = Vec::new();
         for i in 0..proof.ls.len() {
             fs.absorb(&proof.ls[i]);
@@ -122,14 +140,12 @@ impl<G: Group> Proof<IpaRelation<G>> for Bp<G> {
         let scalars = Self::scalars_from_challenges(&challenges);
         let scalars_inv: Vec<G::ScalarField> =
             scalars.iter().map(|s| s.inverse().unwrap()).collect();
-        //let a_gen = msm(&instance.gens.a_gens, &scalars);
-        //let b_gen = msm(&instance.gens.b_gens, &scalars_inv);
 
         let mut final_msm_scalars = Vec::new();
         let mut final_msm_points = Vec::new();
-        final_msm_points.extend(instance.gens.a_gens.iter().cloned());
+        final_msm_points.extend(a_gen);
         final_msm_scalars.extend(scalars.into_iter().map(|s| s * &proof.final_a));
-        final_msm_points.extend(instance.gens.b_gens.iter().cloned());
+        final_msm_points.extend(b_gen);
         final_msm_scalars.extend(scalars_inv.into_iter().map(|s| s * &proof.final_b));
         final_msm_points.push(instance.gens.ip_gen.clone());
         final_msm_scalars.push(proof.final_a * &proof.final_b);
@@ -140,6 +156,7 @@ impl<G: Group> Proof<IpaRelation<G>> for Bp<G> {
             final_msm_scalars.push(-challenges[j].inverse().unwrap().square());
         }
         assert_eq!(instance.result, msm(&final_msm_points, &final_msm_scalars));
+        end_timer!(timer);
     }
     fn proof_size(p: &Self::Proof) -> usize {
         2 * (1 + p.ls.len())

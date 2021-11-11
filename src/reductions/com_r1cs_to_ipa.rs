@@ -1,4 +1,5 @@
 use crate::{
+    timed,
     relations::{
         com_r1cs::{mat_vec_mult, vec_mat_mult, ComR1csRelation},
         ipa::{IpaGens, IpaInstance, IpaRelation, IpaWitness},
@@ -8,6 +9,7 @@ use crate::{
 };
 use ark_ec::group::Group;
 use ark_ff::prelude::*;
+use ark_std::{end_timer, start_timer};
 use derivative::Derivative;
 use std::marker::PhantomData;
 
@@ -36,6 +38,7 @@ impl<G: Group> Reduction for ComR1csToIpa<G> {
         <Self::To as Relation>::Inst,
         <Self::To as Relation>::Wit,
     ) {
+        let timer = start_timer!(|| "proving com-r1cs-to-ipa");
         // Setup
         let n = x.n;
         let m = x.m;
@@ -50,12 +53,17 @@ impl<G: Group> Reduction for ComR1csToIpa<G> {
         let r = G::rand(fs);
 
         // Prover
+        let mat_timer = start_timer!(|| "matrix products");
         let z = w.full_assignment();
         assert_eq!(z.len(), m);
         let az = mat_vec_mult(&x.r1cs.a, &z);
         let bz = mat_vec_mult(&x.r1cs.b, &z);
         assert_eq!(p2.len(), w.a.len());
-        let s_prime = msm(&p2, &w.a) + msm(&p3, &az) + msm(&q3, &bz);
+        end_timer!(mat_timer);
+        let s_prime = timed!(|| "S msm", msm(
+            p2.iter().chain(&p3).chain(&q3),
+            w.a.iter().chain(&az).chain(&bz),
+        ));
 
         // Interaction
         fs.absorb(&s_prime);
@@ -65,6 +73,7 @@ impl<G: Group> Reduction for ComR1csToIpa<G> {
         let eps = G::ScalarField::rand(fs);
 
         // Both
+        let fold_timer = start_timer!(|| "folding");
         let one = G::ScalarField::one();
         let mu = alpha * gamma;
         let alpha_n = powers(alpha, n);
@@ -82,6 +91,8 @@ impl<G: Group> Reduction for ComR1csToIpa<G> {
             ],
             m,
         );
+        end_timer!(fold_timer);
+        let p_timer = start_timer!(|| "p");
         assert_eq!(c.len(), m);
         let p1_prime = eps_n
             .iter()
@@ -95,16 +106,20 @@ impl<G: Group> Reduction for ComR1csToIpa<G> {
             .flatten()
             .cloned()
             .vcollect();
+        end_timer!(p_timer);
+        let s_timer = start_timer!(|| "s");
         let q = vec![&q012, &q3].into_iter().flatten().cloned().vcollect();
-        let s_pprime: G = eps_n.iter().zip(&x.ss).map(|(e, s)| s.mul(e)).sum::<G>()
-            + s_prime
-            + p0
-            + msm(&q012, &c)
-            - msm(&q3, &alpha_n)
-            - msm(&p3_prime, &beta_n)
+        let neg_q012 = q012.into_iter().map(|s| -s).vcollect();
+        let s_pprime: G = eps_n.iter().zip(&x.ss).map(|(e, s)| s.mul(e)).sum::<G>() + s_prime + p0
+            - timed!(|| "msm", msm(
+                neg_q012.iter().chain(&q3).chain(&p3_prime),
+                c.iter().chain(&alpha_n).chain(&beta_n),
+            ))
             + r.mul(&w);
+        end_timer!(s_timer);
 
         // prover computes new witness
+        let new_wit_timer = start_timer!(|| "new wit");
         let u = z
             .into_iter()
             .chain(sum_vecs(
@@ -116,6 +131,7 @@ impl<G: Group> Reduction for ComR1csToIpa<G> {
             .into_iter()
             .chain(sum_vecs(vec![bz, scale_vec(&-one, &alpha_n)], n))
             .vcollect();
+        end_timer!(new_wit_timer);
         assert_eq!(ip(&u, &v), w);
         assert_eq!(u.len(), m + n);
         assert_eq!(v.len(), m + n);
@@ -128,6 +144,7 @@ impl<G: Group> Reduction for ComR1csToIpa<G> {
             challenges: Vec::new(),
         };
         let witness = IpaWitness { a: u, b: v };
+        end_timer!(timer);
         (
             s_prime,
             IpaInstance {
@@ -143,6 +160,7 @@ impl<G: Group> Reduction for ComR1csToIpa<G> {
         s_prime: &Self::Proof,
         fs: &mut FiatShamirRng,
     ) -> <Self::To as Relation>::Inst {
+        let timer = start_timer!(|| "verifying com-r1cs-to-ipa");
         // Setup
         let n = x.n;
         let m = x.m;
@@ -195,12 +213,12 @@ impl<G: Group> Reduction for ComR1csToIpa<G> {
             .cloned()
             .vcollect();
         let q = vec![&q012, &q3].into_iter().flatten().cloned().vcollect();
-        let s_pprime: G = eps_n.iter().zip(&x.ss).map(|(e, s)| s.mul(e)).sum::<G>()
-            + s_prime
-            + p0
-            + msm(&q012, &c)
-            - msm(&q3, &alpha_n)
-            - msm(&p3_prime, &beta_n)
+        let neg_q012 = q012.into_iter().map(|s| -s).vcollect();
+        let s_pprime: G = eps_n.iter().zip(&x.ss).map(|(e, s)| s.mul(e)).sum::<G>() + s_prime + p0
+            - msm(
+                neg_q012.iter().chain(&q3).chain(&p3_prime),
+                c.iter().chain(&alpha_n).chain(&beta_n),
+            )
             + r.mul(&w);
 
         // prover computes en(), m + n);
@@ -211,6 +229,7 @@ impl<G: Group> Reduction for ComR1csToIpa<G> {
             ip_gen: r,
             challenges: Vec::new(),
         };
+        end_timer!(timer);
         IpaInstance {
             gens,
             result: s_pprime,
@@ -225,17 +244,19 @@ impl<G: Group> Reduction for ComR1csToIpa<G> {
 mod test {
     use super::*;
     use crate::{
-        curves::{models::{JubJubPair, PastaPair, VellasPair}, Pair},
+        curves::{
+            models::{JubJubPair, PastaPair, VellasPair},
+            Pair,
+        },
         reductions::{
             bp_unroll_to_com_r1cs::UnrollToComR1cs, com_r1cs_to_ipa::ComR1csToIpa,
             ipa_to_bp_unroll::IpaToBpUnroll,
         },
-        relations::ipa::IpaInstance,
         relations::bp_unroll::UnrollRelation,
+        relations::ipa::IpaInstance,
     };
     use rand::Rng;
-    fn test_from_bp_unroll<C: Pair>(init_size: usize, k: usize, r: usize)
-    {
+    fn test_from_bp_unroll<C: Pair>(init_size: usize, k: usize, r: usize) {
         println!(
             "doing a unrolled circuit check with {} elems, k: {}, r: {}",
             init_size, k, r
@@ -244,8 +265,7 @@ mod test {
         let fs_seed: [u8; 32] = rng.gen();
         let mut fs_rng = crate::FiatShamirRng::from_seed(&fs_seed);
         let mut v_fs_rng = crate::FiatShamirRng::from_seed(&fs_seed);
-        let (instance, witness) =
-            IpaInstance::<C::G1>::sample_from_length(rng, init_size);
+        let (instance, witness) = IpaInstance::<C::G1>::sample_from_length(rng, init_size);
         let reducer = IpaToBpUnroll::<C>::new(k, r);
         let (proof, u_instance, u_witness) = reducer.prove(&instance, &witness, &mut fs_rng);
         UnrollRelation::check(&u_instance, &u_witness);

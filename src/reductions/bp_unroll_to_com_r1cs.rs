@@ -1,4 +1,5 @@
 use crate::{
+    timed,
     curves::Pair,
     r1cs::BpRecCircuit,
     relations::{
@@ -14,6 +15,7 @@ use ark_relations::r1cs::{
 use derivative::Derivative;
 use std::marker::PhantomData;
 use log::debug;
+use ark_std::{start_timer, end_timer};
 
 #[derive(Derivative)]
 #[derivative(Default(bound = ""))]
@@ -34,6 +36,7 @@ impl<C: Pair> Reduction for UnrollToComR1cs<C> {
         <Self::To as Relation>::Inst,
         <Self::To as Relation>::Wit,
     ) {
+        let timer = start_timer!(|| "proving unroll-to-com-r1cs");
         let cs: ConstraintSystemRef<C::LinkField> = ConstraintSystem::new_ref();
         let circ = BpRecCircuit::from_unrolled_bp_witness(x.clone(), w.clone(), fs);
         cs.set_optimization_goal(OptimizationGoal::Constraints);
@@ -42,9 +45,9 @@ impl<C: Pair> Reduction for UnrollToComR1cs<C> {
         });
         assert_eq!(cs.num_instance_variables(), 1);
         circ.generate_constraints(cs.clone()).unwrap();
-        cs.finalize();
+        timed!(|| "Finalize R1CS", cs.finalize());
         //assert!(cs.is_satisfied().unwrap());
-        let mats = cs.to_matrices().expect("No matrices");
+        let mats = timed!(|| "extract matrices", cs.to_matrices().expect("No matrices"));
         // (1, zs, a)
         let full_assignment: Vec<C::LinkField> = cs
             .borrow()
@@ -80,6 +83,7 @@ impl<C: Pair> Reduction for UnrollToComR1cs<C> {
             a: full_assignment[1 + n_zs..].to_vec(),
             zs,
         };
+        end_timer!(timer);
         ((), x_r1cs, w_r1cs)
     }
     fn verify(
@@ -88,6 +92,7 @@ impl<C: Pair> Reduction for UnrollToComR1cs<C> {
         _pf: &Self::Proof,
         fs: &mut FiatShamirRng,
     ) -> <Self::To as Relation>::Inst {
+        let timer = start_timer!(|| "verifying unroll-to-com-r1cs");
         let cs: ConstraintSystemRef<C::LinkField> = ConstraintSystem::new_ref();
         let circ = BpRecCircuit::from_unrolled_bp_instance(x.clone(), fs);
         cs.set_optimization_goal(OptimizationGoal::Constraints);
@@ -108,6 +113,7 @@ impl<C: Pair> Reduction for UnrollToComR1cs<C> {
             ss: x.commits.clone(),
             r1cs: mats,
         };
+        end_timer!(timer);
         x_r1cs
     }
     fn proof_size(_p: &Self::Proof) -> usize {

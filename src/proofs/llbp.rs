@@ -1,11 +1,12 @@
 use crate::{
     curves::Pair,
-    reductions::combinator::{RepeatWhile, Sequence, TrueReductionToProof},
+    proofs::bp_iter::Bp,
+    reductions::combinator::{ProofToTrueReduction, Sequence, TrueReductionToProof},
     reductions::{
-        bp_2ary_step::Bp2aryStep, bp_unroll_to_com_r1cs::UnrollToComR1cs,
-        com_r1cs_to_ipa::ComR1csToIpa, ipa_send::SendIpa, ipa_to_bp_unroll::IpaToBpUnroll,
+        bp_unroll_to_com_r1cs::UnrollToComR1cs, com_r1cs_to_ipa::ComR1csToIpa,
+        ipa_to_bp_unroll::IpaToBpUnroll,
     },
-    relations::ipa::{IpaInstance, IpaRelation},
+    relations::ipa::IpaRelation,
     Proof,
 };
 
@@ -16,26 +17,23 @@ use crate::{
 /// * proves that via the classic bulletproofs.
 ///
 /// Defined using [crate::Reduction] combinators.
-pub fn llbp<C: Pair>(k: usize, r: usize) -> impl Proof<IpaRelation<C::G1>>
-{
+pub fn llbp<C: Pair>(k: usize, r: usize) -> impl Proof<IpaRelation<C::G1>> {
     TrueReductionToProof::new(Sequence::new(
         Sequence::new(
             Sequence::new(IpaToBpUnroll::<C>::new(k, r), UnrollToComR1cs::default()),
             ComR1csToIpa::default(),
         ),
-        Sequence::new(
-            RepeatWhile::new(Bp2aryStep::default(), |x: &IpaInstance<C::G2>| {
-                x.gens.vec_size > 1
-            }),
-            SendIpa::default(),
-        ),
+        ProofToTrueReduction::new(Bp::default()),
     ))
 }
 
 #[cfg(test)]
 mod test {
     use super::llbp;
-    use crate::{curves::models::{JubJubPair, VellasPair, PastaPair}, test_ipa};
+    use crate::{
+        curves::models::{JubJubPair, PastaPair, VellasPair},
+        test_ipa,
+    };
     #[test]
     #[ignore]
     fn test_jubjub() {

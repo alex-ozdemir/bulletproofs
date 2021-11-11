@@ -1,5 +1,6 @@
 //! R1CS relations for BP recursions
 use crate::{
+    timed,
     curves::{IncompleteOpsGadget, Pair},
     relations::{
         bp_unroll::{UnrolledBpInstance, UnrolledBpWitness},
@@ -32,15 +33,6 @@ use std::marker::PhantomData;
 pub mod ip;
 pub mod msm;
 use msm::{incomplete_known_point_msm, known_scalar_msm};
-
-macro_rules! timed {
-    ($label:expr, $val:expr) => {{
-        let timer = ::ark_std::start_timer!($label);
-        let val = $val;
-        ::ark_std::end_timer!(timer);
-        val
-    }};
-}
 
 /// The relation:
 ///
@@ -236,6 +228,7 @@ impl<C: Pair> BpRecCircuit<C> {
 
 impl<C: Pair> ConstraintSynthesizer<C::LinkField> for BpRecCircuit<C> {
     fn generate_constraints(self, cs: ConstraintSystemRef<C::LinkField>) -> r1cs::Result<()> {
+        let timer = start_timer!(|| "synthesis");
         self.check_sizes();
         let alloc_timer = start_timer!(|| "allocations");
         let t: Vec<C::G1Var> = (0..self.k)
@@ -318,6 +311,7 @@ impl<C: Pair> ConstraintSynthesizer<C::LinkField> for BpRecCircuit<C> {
             )
         });
         commit.enforce_equal(&lhs).unwrap();
+        end_timer!(timer);
 
         // TODO: check commitment to t OR integrate with an R1CS compiler that does so
         // automatically.
