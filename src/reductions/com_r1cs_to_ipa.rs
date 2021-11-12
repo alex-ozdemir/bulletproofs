@@ -162,6 +162,7 @@ impl<G: Group> Reduction for ComR1csToIpa<G> {
     ) -> <Self::To as Relation>::Inst {
         let timer = start_timer!(|| "verifying com-r1cs-to-ipa");
         // Setup
+        let setup_timer = start_timer!(|| "setup");
         let n = x.n;
         let m = x.m;
         let p1 = x.ts.iter().flatten().cloned().vcollect();
@@ -173,6 +174,7 @@ impl<G: Group> Reduction for ComR1csToIpa<G> {
         let q012 = rand_vec::<G, _>(m, fs);
         let q3 = rand_vec::<G, _>(n, fs);
         let r = G::rand(fs);
+        end_timer!(setup_timer);
 
         // Interaction
         fs.absorb(&s_prime);
@@ -184,6 +186,7 @@ impl<G: Group> Reduction for ComR1csToIpa<G> {
         // Both
         let one = G::ScalarField::one();
         let mu = alpha * gamma;
+        let chall_pow_timer = start_timer!(|| "challenge powers");
         let alpha_n = powers(alpha, n);
         let beta_n = powers(beta, n);
         let gamma_n = powers(gamma, n);
@@ -191,15 +194,17 @@ impl<G: Group> Reduction for ComR1csToIpa<G> {
         let eps_n = powers(eps, n);
         let gamma_minus_n = neg_powers(gamma, n);
         let w = ip(&alpha_n, &beta_n);
-        let c = sum_vecs(
+        end_timer!(chall_pow_timer);
+        let c = timed!(|| "sum", sum_vecs(
             vec![
                 vec_mat_mult(&mu_n, &x.r1cs.a, m),
                 vec_mat_mult(&beta_n, &x.r1cs.b, m),
                 scale_vec(&-one, &vec_mat_mult(&gamma_n, &x.r1cs.c, m)),
             ],
             m,
-        );
+        ));
         assert_eq!(c.len(), m);
+        let s_timer = start_timer!(|| "s");
         let p1_prime = eps_n
             .iter()
             .zip(&x.ts)
@@ -220,6 +225,7 @@ impl<G: Group> Reduction for ComR1csToIpa<G> {
                 c.iter().chain(&alpha_n).chain(&beta_n),
             )
             + r.mul(&w);
+        end_timer!(s_timer);
 
         // prover computes en(), m + n);
         let gens = IpaGens {
