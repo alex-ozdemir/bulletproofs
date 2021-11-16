@@ -99,8 +99,8 @@ impl<C: Pair> Reduction for UnrollToComR1cs<C> {
         cs.set_mode(SynthesisMode::Setup);
         assert_eq!(cs.num_instance_variables(), 1);
         circ.generate_constraints(cs.clone()).unwrap();
-        cs.finalize();
-        let mats = cs.to_matrices().expect("No matrices");
+        timed!(|| "finalize", cs.finalize());
+        let mats = timed!(|| "extract matrices", cs.to_matrices().expect("No matrices"));
         assert_eq!(mats.num_instance_variables, 1);
         let num_cross_terms = (x.k - 1) * 2;
         let num_aff_coords = num_cross_terms * 2;
