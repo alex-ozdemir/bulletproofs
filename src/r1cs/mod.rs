@@ -1,11 +1,11 @@
 //! R1CS relations for BP recursions
 use crate::{
-    timed,
     curves::{IncompleteOpsGadget, Pair},
     relations::{
         bp_unroll::{UnrolledBpInstance, UnrolledBpWitness},
         ipa::{IpaInstance, IpaWitness},
     },
+    timed,
     util::powers,
 };
 use ark_ec::group::Group;
@@ -298,12 +298,21 @@ impl<C: Pair> ConstraintSynthesizer<C::LinkField> for BpRecCircuit<C> {
             scalars.push(ip_bits);
             points.push(self.q.clone());
             let acc_val: C::G1 = self.randomizer.clone();
-            incomplete_known_point_msm::<_, _, _, C::G1IncompleteOps>(ns!(cs, "msm"), &acc_val, scalars, &points)
+            incomplete_known_point_msm::<_, _, _, C::G1IncompleteOps>(
+                ns!(cs, "msm"),
+                &acc_val,
+                scalars,
+                &points,
+            )
         });
 
         // compute p + <s, t>
         let lhs = timed!(|| "gen lhs", {
-            let p = C::G1IncompleteOps::alloc_constant(ns!(cs, "p+rand"), &(self.p.clone() + &self.randomizer)).unwrap();
+            let p = C::G1IncompleteOps::alloc_constant(
+                ns!(cs, "p+rand"),
+                &(self.p.clone() + &self.randomizer),
+            )
+            .unwrap();
             known_scalar_msm::<C::LinkField, C::G1, C::G1Var, C::G1IncompleteOps>(
                 p,
                 self.s.clone(),
@@ -333,8 +342,9 @@ mod test {
     use super::*;
     use crate::{
         curves::models::{JubJubPair, PastaPair, VellasPair},
-        reductions::ipa_to_bp_unroll::IpaToBpUnroll, relations::ipa::IpaRelation, Reduction,
-        Relation,
+        reductions::ipa_to_bp_unroll::IpaToBpUnroll,
+        relations::ipa::IpaRelation,
+        Reduction, Relation,
     };
     use ark_ec::ModelParameters;
     use ark_relations::r1cs::ConstraintSystem;
@@ -461,5 +471,4 @@ mod test {
         unroll_check::<VellasPair>(9, 3, 1);
         unroll_check::<VellasPair>(9, 3, 2);
     }
-
 }

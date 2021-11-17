@@ -124,7 +124,10 @@ pub fn test_ipa<G: Group, I: Proof<IpaRelation<G>>>(sizes: Vec<usize>, reps: usi
             debug!(target: "pf_size", "Proof size: {}", proof_size);
             let mut fs_rng = FiatShamirRng::from_seed(&fs_seed);
             let ver_start = Instant::now();
-            timed!(|| "verifying", i.verify(&pp, &instance, &proof, &mut fs_rng));
+            timed!(
+                || "verifying",
+                i.verify(&pp, &instance, &proof, &mut fs_rng)
+            );
             let ver_end = Instant::now();
             debug!(target: "ver_time", "Verifier time (s): {}", (ver_end-ver_start).as_secs_f64());
         }

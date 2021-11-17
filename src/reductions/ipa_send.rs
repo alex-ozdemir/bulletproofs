@@ -49,7 +49,11 @@ impl<G: Group> Reduction for SendIpa<G> {
     fn proof_size(_p: &Self::Proof) -> usize {
         2
     }
-    fn setup<R: rand::Rng>(&self, _: &<IpaRelation<G> as Relation>::Cfg, _: &mut R) -> Self::Params {
+    fn setup<R: rand::Rng>(
+        &self,
+        _: &<IpaRelation<G> as Relation>::Cfg,
+        _: &mut R,
+    ) -> Self::Params {
         ()
     }
     fn map_params(&self, _: &<IpaRelation<G> as Relation>::Cfg) -> () {

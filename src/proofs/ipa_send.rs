@@ -37,7 +37,11 @@ impl<G: Group> Proof<IpaRelation<G>> for SendIpa<G> {
         IpaRelation::check(&instance, &proof);
     }
 
-    fn setup<Rn: rand::Rng>(&self, _: &<IpaRelation<G> as Relation>::Cfg, _: &mut Rn) -> Self::Params {
+    fn setup<Rn: rand::Rng>(
+        &self,
+        _: &<IpaRelation<G> as Relation>::Cfg,
+        _: &mut Rn,
+    ) -> Self::Params {
         ()
     }
 

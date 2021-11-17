@@ -27,13 +27,13 @@ pub fn scale_vec<S: Clone + Sync + Send, F: MulAssign<S> + Clone + Sync + Send>(
     b: &[F],
 ) -> Vec<F> {
     timed!(|| "scale_vec", {
-    cfg_into_iter!(b)
-        .map(|b| {
-            let mut c = b.clone();
-            c *= s.clone();
-            c
-        })
-        .collect()
+        cfg_into_iter!(b)
+            .map(|b| {
+                let mut c = b.clone();
+                c *= s.clone();
+                c
+            })
+            .collect()
     })
 }
 
@@ -43,23 +43,23 @@ pub fn sum_vecs<F: AddAssign + Zero + Clone + Send + Sync, I: IntoIterator<Item 
     len: usize,
 ) -> Vec<F> {
     timed!(|| "sum_vecs", {
-    i.into_iter()
-        .fold(vec![F::zero(); len], |mut acc, summand| {
-            assert_eq!(summand.len(), len);
-            cfg_iter_mut!(acc).zip(summand).for_each(|(a, b)| {
-                *a += b;
-            });
-            acc
-        })
+        i.into_iter()
+            .fold(vec![F::zero(); len], |mut acc, summand| {
+                assert_eq!(summand.len(), len);
+                cfg_iter_mut!(acc).zip(summand).for_each(|(a, b)| {
+                    *a += b;
+                });
+                acc
+            })
     })
 }
 
 pub fn powers<F: Field>(f: F, range: Range<usize>) -> Vec<F> {
     timed!(|| "powers", {
-    let first = f.pow(&[range.start as u64]);
-    std::iter::successors(Some(first), |acc| Some(*acc * f))
-        .take(range.end - range.start)
-        .collect()
+        let first = f.pow(&[range.start as u64]);
+        std::iter::successors(Some(first), |acc| Some(*acc * f))
+            .take(range.end - range.start)
+            .collect()
     })
 }
 
@@ -69,18 +69,18 @@ pub fn neg_powers<F: Field>(f: F, range: Range<usize>) -> Vec<F> {
 
 pub fn hadamard_gp<G: Group>(bases: &[G], scalars: &[G::ScalarField]) -> Vec<G> {
     timed!(|| "hadamard_gp", {
-    assert_eq!(bases.len(), scalars.len());
-    cfg_iter!(bases)
-        .zip(scalars)
-        .map(|(base, scalar)| base.mul(scalar))
-        .collect()
+        assert_eq!(bases.len(), scalars.len());
+        cfg_iter!(bases)
+            .zip(scalars)
+            .map(|(base, scalar)| base.mul(scalar))
+            .collect()
     })
 }
 
 pub fn hadamard<F: Field>(a: &[F], b: &[F]) -> Vec<F> {
     timed!(|| "hadamard", {
-    assert_eq!(a.len(), b.len());
-    cfg_iter!(a).zip(b).map(|(a, b)| *a * b).collect()
+        assert_eq!(a.len(), b.len());
+        cfg_iter!(a).zip(b).map(|(a, b)| *a * b).collect()
     })
 }
 

@@ -93,7 +93,13 @@ impl<G: Group, B: Proof<IpaRelation<G>>> Proof<IpaRelation<G>> for Bp<G, B> {
         }
     }
 
-    fn verify(&self, pp: &Self::Params, instance: &IpaInstance<G>, proof: &Self::Proof, fs: &mut FiatShamirRng) {
+    fn verify(
+        &self,
+        pp: &Self::Params,
+        instance: &IpaInstance<G>,
+        proof: &Self::Proof,
+        fs: &mut FiatShamirRng,
+    ) {
         match proof {
             BpProof::Base(base_proof) => self.1.verify(pp, instance, base_proof, fs),
             BpProof::Rec(l, r, inner_proof) => {
@@ -129,7 +135,11 @@ impl<G: Group, B: Proof<IpaRelation<G>>> Proof<IpaRelation<G>> for Bp<G, B> {
             }
         }
     }
-    fn setup<Rn: rand::Rng>(&self, _: &<IpaRelation<G> as Relation>::Cfg, rng: &mut Rn) -> Self::Params {
+    fn setup<Rn: rand::Rng>(
+        &self,
+        _: &<IpaRelation<G> as Relation>::Cfg,
+        rng: &mut Rn,
+    ) -> Self::Params {
         self.1.setup(&2, rng)
     }
 

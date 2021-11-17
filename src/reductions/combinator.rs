@@ -127,7 +127,11 @@ where
         p.iter().map(|pi| R1::proof_size(pi)).sum()
     }
 
-    fn setup<Rn: rand::Rng>(&self, c: &<Self::From as Relation>::Cfg, rng: &mut Rn) -> Self::Params {
+    fn setup<Rn: rand::Rng>(
+        &self,
+        c: &<Self::From as Relation>::Cfg,
+        rng: &mut Rn,
+    ) -> Self::Params {
         self.r.setup(c, rng)
     }
 
@@ -177,9 +181,13 @@ impl<R: Relation, P: Reduction<From = R, To = True>> Proof<R> for TrueReductionT
     ) -> Self::Proof {
         self.0.prove(pp, x, w, fs).0
     }
-    fn verify(&self,
+    fn verify(
+        &self,
         pp: &Self::Params,
-        x: &<R as Relation>::Inst, pf: &Self::Proof, fs: &mut FiatShamirRng) {
+        x: &<R as Relation>::Inst,
+        pf: &Self::Proof,
+        fs: &mut FiatShamirRng,
+    ) {
         self.0.verify(pp, x, pf, fs);
     }
     fn proof_size(p: &Self::Proof) -> usize {
@@ -216,7 +224,13 @@ impl<R: Relation, P: Proof<R>> Reduction for ProofToTrueReduction<R, P> {
     ) {
         (self.0.prove(pp, x, w, fs), (), ())
     }
-    fn verify(&self, pp: &Self::Params, x: &<R as Relation>::Inst, pf: &Self::Proof, fs: &mut FiatShamirRng) {
+    fn verify(
+        &self,
+        pp: &Self::Params,
+        x: &<R as Relation>::Inst,
+        pf: &Self::Proof,
+        fs: &mut FiatShamirRng,
+    ) {
         self.0.verify(pp, x, pf, fs);
     }
     fn proof_size(p: &Self::Proof) -> usize {

@@ -50,7 +50,7 @@ impl<G: Group> Reduction for ComR1csToIpa<G> {
         assert_eq!(x.r * x.c, p1.len());
         let mut pp = pp.clone();
         let p0 = pp.pop().unwrap();
-        let p2 = pp.drain(..m-p1.len()-1).vcollect();
+        let p2 = pp.drain(..m - p1.len() - 1).vcollect();
         let p3 = pp.drain(..n).vcollect();
         let q012 = pp.drain(..m).vcollect();
         let q3 = pp.drain(..n).vcollect();
@@ -181,7 +181,7 @@ impl<G: Group> Reduction for ComR1csToIpa<G> {
         assert_eq!(x.r * x.c, p1.len());
         let mut pp = pp.clone();
         let p0 = pp.pop().unwrap();
-        let p2 = pp.drain(..m-p1.len()-1).vcollect();
+        let p2 = pp.drain(..m - p1.len() - 1).vcollect();
         let p3 = pp.drain(..n).vcollect();
         let q012 = pp.drain(..m).vcollect();
         let q3 = pp.drain(..n).vcollect();

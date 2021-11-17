@@ -1,21 +1,21 @@
 use crate::{
-    timed,
     curves::Pair,
     r1cs::BpRecCircuit,
     relations::{
         bp_unroll::UnrollRelation,
         com_r1cs::{ComR1csInstance, ComR1csRelation, ComR1csWitness},
     },
+    timed,
     util::CollectIter,
     FiatShamirRng, Reduction, Relation,
 };
 use ark_relations::r1cs::{
     ConstraintSynthesizer, ConstraintSystem, ConstraintSystemRef, OptimizationGoal, SynthesisMode,
 };
+use ark_std::{end_timer, start_timer};
 use derivative::Derivative;
-use std::marker::PhantomData;
 use log::debug;
-use ark_std::{start_timer, end_timer};
+use std::marker::PhantomData;
 
 #[derive(Derivative)]
 #[derivative(Default(bound = ""))]
@@ -49,7 +49,10 @@ impl<C: Pair> Reduction for UnrollToComR1cs<C> {
         circ.generate_constraints(cs.clone()).unwrap();
         timed!(|| "Finalize R1CS", cs.finalize());
         //assert!(cs.is_satisfied().unwrap());
-        let mats = timed!(|| "extract matrices", cs.to_matrices().expect("No matrices"));
+        let mats = timed!(
+            || "extract matrices",
+            cs.to_matrices().expect("No matrices")
+        );
         // (1, zs, a)
         let full_assignment: Vec<C::LinkField> = cs
             .borrow()
@@ -103,7 +106,10 @@ impl<C: Pair> Reduction for UnrollToComR1cs<C> {
         assert_eq!(cs.num_instance_variables(), 1);
         circ.generate_constraints(cs.clone()).unwrap();
         timed!(|| "finalize", cs.finalize());
-        let mats = timed!(|| "extract matrices", cs.to_matrices().expect("No matrices"));
+        let mats = timed!(
+            || "extract matrices",
+            cs.to_matrices().expect("No matrices")
+        );
         assert_eq!(mats.num_instance_variables, 1);
         let num_cross_terms = (x.k - 1) * 2;
         let num_aff_coords = num_cross_terms * 2;

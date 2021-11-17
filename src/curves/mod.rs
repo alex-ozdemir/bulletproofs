@@ -305,7 +305,10 @@ impl<F: PrimeField, P: ModelParameters<BaseField = F> + SWModelParameters>
         a.x.enforce_not_equal(&b.x).unwrap();
         Self::add_unchecked(a, b)
     }
-    fn add_unchecked(a: &SwNzAffVar<P, FpVar<F>>, b: &SwNzAffVar<P, FpVar<F>>) -> SwNzAffVar<P, FpVar<F>> {
+    fn add_unchecked(
+        a: &SwNzAffVar<P, FpVar<F>>,
+        b: &SwNzAffVar<P, FpVar<F>>,
+    ) -> SwNzAffVar<P, FpVar<F>> {
         // slows us down substantially, for some reason...
         #[cfg(debug_assertions)]
         a.value()

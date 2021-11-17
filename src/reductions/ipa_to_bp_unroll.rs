@@ -71,7 +71,11 @@ impl<C: Pair> Reduction for IpaToBpUnroll<C> {
     fn proof_size(p: &Self::Proof) -> usize {
         p.len()
     }
-    fn setup<R: rand::Rng>(&self, _c: &<Self::From as Relation>::Cfg, _rng: &mut R) -> Self::Params {
+    fn setup<R: rand::Rng>(
+        &self,
+        _c: &<Self::From as Relation>::Cfg,
+        _rng: &mut R,
+    ) -> Self::Params {
         ()
     }
     fn map_params(&self, c: &<Self::From as Relation>::Cfg) -> <Self::To as Relation>::Cfg {

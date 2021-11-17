@@ -428,7 +428,8 @@ mod test {
             scalar_bits,
             &points,
         );
-        let ex_const = <C as Pair>::G1IncompleteOps::alloc_constant(ns!(cs, "expect"), &expected).unwrap();
+        let ex_const =
+            <C as Pair>::G1IncompleteOps::alloc_constant(ns!(cs, "expect"), &expected).unwrap();
         msm.enforce_equal(&ex_const).unwrap();
         assert!(cs.is_satisfied().unwrap());
     }
@@ -445,5 +446,4 @@ mod test {
     fn fb_pasta_simple_2() {
         fb_pasta_simple(2)
     }
-
 }
