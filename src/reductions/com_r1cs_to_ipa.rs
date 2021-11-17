@@ -220,6 +220,7 @@ impl<G: Group> Reduction for ComR1csToIpa<G> {
         );
         assert_eq!(c.len(), m);
         let s_timer = start_timer!(|| "s");
+        let p_prime_timer = start_timer!(|| "p'");
         let p1_prime = eps_n
             .iter()
             .zip(&x.ts)
@@ -232,14 +233,18 @@ impl<G: Group> Reduction for ComR1csToIpa<G> {
             .flatten()
             .cloned()
             .vcollect();
+        end_timer!(p_prime_timer);
         let q = vec![&q012, &q3].into_iter().flatten().cloned().vcollect();
         let neg_q012 = q012.into_iter().map(|s| -s).vcollect();
-        let s_pprime: G = eps_n.iter().zip(&x.ss).map(|(e, s)| s.mul(e)).sum::<G>() + s_prime + p0
-            - msm(
-                neg_q012.iter().chain(&q3).chain(&p3_prime),
-                c.iter().chain(&alpha_n).chain(&beta_n),
-            )
-            + r.mul(&w);
+        let s_pprime: G = timed!(
+            || "res",
+            eps_n.iter().zip(&x.ss).map(|(e, s)| s.mul(e)).sum::<G>() + s_prime + p0
+                - msm(
+                    neg_q012.iter().chain(&q3).chain(&p3_prime),
+                    c.iter().chain(&alpha_n).chain(&beta_n),
+                )
+                + r.mul(&w)
+        );
         end_timer!(s_timer);
 
         // prover computes en(), m + n);

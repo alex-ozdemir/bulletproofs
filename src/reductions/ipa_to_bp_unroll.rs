@@ -11,10 +11,75 @@ use crate::{
     },
     FiatShamirRng, Reduction, Relation,
 };
-use ark_ff::{One, UniformRand};
+use ark_ec::group::Group;
+use ark_ff::{Field, One, PrimeField, UniformRand};
 use log::debug;
 use std::iter::once;
 use std::marker::PhantomData;
+use ark_std::{start_timer, end_timer};
+
+fn compute_bp_unroll_msms<G: Group>(v: &[G], k: usize, challenges: &[G::ScalarField]) -> Vec<G> {
+    let timer = start_timer!(|| "unroll scalars");
+    let mut groups: Vec<Vec<(G, G::ScalarField)>> = v
+        .iter()
+        .map(|g| vec![(g.clone(), G::ScalarField::one())])
+        .vcollect();
+    let r = challenges.len();
+    let n_end = (v.len() - 1) / k.pow(r as u32) + 1;
+    for c in challenges {
+        let c_pows = powers(*c, 0..k);
+        let n_bkts = (groups.len() - 1) / k + 1;
+        let full_chunk_size = n_bkts;
+        let n_chunks = k;
+        let n_not_full_chunks = n_bkts * n_chunks - groups.len();
+        assert!(n_not_full_chunks < n_chunks);
+        let n_full_chunks = n_chunks - n_not_full_chunks;
+        let mut bkts = vec![Vec::new(); n_bkts];
+        groups.reverse();
+        for chunk_i in 0..k {
+            let mut mult = G::ScalarField::one();
+            let chunk_size = full_chunk_size - if chunk_i < n_full_chunks { 0 } else { 1 };
+            for bkt_i in 0..chunk_size {
+                let gp = groups.pop().unwrap();
+                bkts[bkt_i].extend(gp.into_iter().map(|(g, s)| (g, s * c_pows[chunk_i])));
+            }
+            mult *= c;
+        }
+        assert_eq!(groups.len(), 0);
+        groups = bkts;
+    }
+    end_timer!(timer);
+    assert_eq!(n_end, groups.len());
+    timed!(
+        || "msms",
+        groups
+            .into_iter()
+            .enumerate()
+            .map(|(_i, gp)| timed!(|| format!("msm{}", _i), {
+                let (pts, scalars): (Vec<G>, Vec<_>) = gp.into_iter().unzip();
+                msm(&pts, &scalars)
+            }))
+            .collect()
+    )
+}
+
+/// Computes the outer product of
+///
+/// (1, c_i, c_i^2, ..., c_i^(k-1))
+///
+/// for all i, with c_0 on the outside. That is, adjacent entries in the final vector generally
+/// have the same power of c_0.
+#[allow(dead_code)]
+fn outer_product<F: PrimeField>(k: usize, challenges: &[F]) -> Vec<F> {
+    match challenges.first() {
+        None => vec![F::one()],
+        Some(first) => {
+            let v = outer_product(k, &challenges[1..]);
+            let ps = powers(*first, 1..k);
+            ps.iter().flat_map(|p| scale_vec(p, &v)).collect()
+        }
+    }
+}
 
 pub struct IpaToBpUnroll<C: Pair> {
     pub k: usize,
@@ -217,10 +282,42 @@ pub fn verify_unroll<C: Pair>(
     pf: &[C::G2],
     fs: &mut FiatShamirRng,
 ) {
-    assert_eq!(pf.len(), r);
+    let k = instance.k;
+    let n_cross_terms = 2 * (k - 1);
+    let n_aff_coords = 2 * n_cross_terms;
+    assert_eq!(instance.challs.len(), 0);
+    assert_eq!(instance.commit_gens.len(), 0);
+    assert_eq!(instance.r, 0);
+
     for i in 0..r {
-        timed!(|| format!("step {}", i), verify_step(instance, &pf[i], fs));
+        // generate cross term commitment generators
+        instance.commit_gens.push(rand_vec(n_aff_coords, fs));
+
+        // recieve cross-term commitment
+        instance.commits.push(pf[i].clone());
+        fs.absorb(&pf[i]);
+
+        // sample challenge
+        instance.challs.push(C::TopField::rand(fs));
     }
+
+    assert_eq!(instance.challs.len(), r);
+    assert_eq!(instance.commit_gens.len(), r);
+
+    let chall_invs = instance
+        .challs
+        .iter()
+        .map(|c| c.inverse().unwrap())
+        .vcollect();
+    let a_gen_next = compute_bp_unroll_msms(&instance.gens.a_gens, k, &chall_invs);
+    let b_gen_next = compute_bp_unroll_msms(&instance.gens.b_gens, k, &instance.challs);
+    let nxt_size = (instance.gens.vec_size - 1) / k.pow(r as u32) + 1;
+    assert_eq!(nxt_size, a_gen_next.len());
+    assert_eq!(nxt_size, b_gen_next.len());
+    instance.gens.vec_size = a_gen_next.len();
+    instance.gens.a_gens = a_gen_next;
+    instance.gens.b_gens = b_gen_next;
+    instance.r = r;
 }
 
 pub fn verify_step<C: Pair>(

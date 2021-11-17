@@ -1,7 +1,7 @@
 use crate::{
     relations::ipa::{IpaInstance, IpaRelation, IpaWitness},
     timed,
-    util::{ip, msm, zero_pad_to_two_power},
+    util::{ip, msm, zero_pad_to_two_power, CollectIter},
     FiatShamirRng, Proof, Relation,
 };
 use ark_ec::group::Group;
@@ -135,9 +135,12 @@ impl<G: Group> Proof<IpaRelation<G>> for Bp<G> {
         fs: &mut FiatShamirRng,
     ) {
         let timer = start_timer!(|| "verifying BP");
+        let pad_timer = start_timer!(|| "padding");
         let a_gen = zero_pad_to_two_power(&instance.gens.a_gens);
         let b_gen = zero_pad_to_two_power(&instance.gens.b_gens);
+        end_timer!(pad_timer);
         assert!(a_gen.len().is_power_of_two());
+        let fs_timer = start_timer!(|| "FS interact");
         let mut challenges: Vec<G::ScalarField> = Vec::new();
         for i in 0..proof.ls.len() {
             fs.absorb(&proof.ls[i]);
@@ -145,10 +148,16 @@ impl<G: Group> Proof<IpaRelation<G>> for Bp<G> {
             let x = G::ScalarField::rand(fs);
             challenges.push(x);
         }
+        let challenges_inv = challenges.iter().map(|c| c.inverse().unwrap()).vcollect();
+        end_timer!(fs_timer);
+        let scalars_timer = start_timer!(|| "scalars");
         let scalars = Self::scalars_from_challenges(&challenges);
-        let scalars_inv: Vec<G::ScalarField> =
-            scalars.iter().map(|s| s.inverse().unwrap()).collect();
+        let scalars_inv = Self::scalars_from_challenges(&challenges_inv);
+//        let scalars_inv: Vec<G::ScalarField> =
+//            scalars.iter().map(|s| s.inverse().unwrap()).collect();
+        end_timer!(scalars_timer);
 
+        let vec_build_timer = start_timer!(|| "vec build timer");
         let mut final_msm_scalars = Vec::new();
         let mut final_msm_points = Vec::new();
         final_msm_points.extend(a_gen);
@@ -163,6 +172,7 @@ impl<G: Group> Proof<IpaRelation<G>> for Bp<G> {
             final_msm_points.push(proof.rs[j]);
             final_msm_scalars.push(-challenges[j].inverse().unwrap().square());
         }
+        end_timer!(vec_build_timer);
         assert_eq!(instance.result, msm(&final_msm_points, &final_msm_scalars));
         end_timer!(timer);
     }
