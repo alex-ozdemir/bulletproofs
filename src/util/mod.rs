@@ -8,20 +8,25 @@ use ark_std::{cfg_into_iter, cfg_iter, cfg_iter_mut};
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
+use crate::timed;
+
 pub mod msm;
 
 pub use msm::pippenger_msm as msm;
 
 #[track_caller]
 pub fn ip<F: Field>(a: &[F], b: &[F]) -> F {
-    assert_eq!(a.len(), b.len());
-    cfg_iter!(a).zip(b).map(|(a, b)| *a * b).sum()
+    timed!(|| "ip", {
+        assert_eq!(a.len(), b.len());
+        cfg_iter!(a).zip(b).map(|(a, b)| *a * b).sum()
+    })
 }
 
 pub fn scale_vec<S: Clone + Sync + Send, F: MulAssign<S> + Clone + Sync + Send>(
     s: &S,
     b: &[F],
 ) -> Vec<F> {
+    timed!(|| "scale_vec", {
     cfg_into_iter!(b)
         .map(|b| {
             let mut c = b.clone();
@@ -29,6 +34,7 @@ pub fn scale_vec<S: Clone + Sync + Send, F: MulAssign<S> + Clone + Sync + Send>(
             c
         })
         .collect()
+    })
 }
 
 #[track_caller]
@@ -36,6 +42,7 @@ pub fn sum_vecs<F: AddAssign + Zero + Clone + Send + Sync, I: IntoIterator<Item 
     i: I,
     len: usize,
 ) -> Vec<F> {
+    timed!(|| "sum_vecs", {
     i.into_iter()
         .fold(vec![F::zero(); len], |mut acc, summand| {
             assert_eq!(summand.len(), len);
@@ -44,13 +51,16 @@ pub fn sum_vecs<F: AddAssign + Zero + Clone + Send + Sync, I: IntoIterator<Item 
             });
             acc
         })
+    })
 }
 
 pub fn powers<F: Field>(f: F, range: Range<usize>) -> Vec<F> {
+    timed!(|| "powers", {
     let first = f.pow(&[range.start as u64]);
     std::iter::successors(Some(first), |acc| Some(*acc * f))
         .take(range.end - range.start)
         .collect()
+    })
 }
 
 pub fn neg_powers<F: Field>(f: F, range: Range<usize>) -> Vec<F> {
@@ -58,16 +68,20 @@ pub fn neg_powers<F: Field>(f: F, range: Range<usize>) -> Vec<F> {
 }
 
 pub fn hadamard_gp<G: Group>(bases: &[G], scalars: &[G::ScalarField]) -> Vec<G> {
+    timed!(|| "hadamard_gp", {
     assert_eq!(bases.len(), scalars.len());
     cfg_iter!(bases)
         .zip(scalars)
         .map(|(base, scalar)| base.mul(scalar))
         .collect()
+    })
 }
 
 pub fn hadamard<F: Field>(a: &[F], b: &[F]) -> Vec<F> {
+    timed!(|| "hadamard", {
     assert_eq!(a.len(), b.len());
     cfg_iter!(a).zip(b).map(|(a, b)| *a * b).collect()
+    })
 }
 
 pub trait CollectIter: Iterator + Sized
@@ -82,7 +96,7 @@ where
 impl<I: Iterator> CollectIter for I {}
 
 pub fn rand_vec<U: UniformRand, R: Rng>(n: usize, rng: &mut R) -> Vec<U> {
-    (0..n).map(|_| U::rand(rng)).collect()
+    timed!(|| "rand_vec", (0..n).map(|_| U::rand(rng)).collect())
 }
 
 /// Copy array into a vector, length at least k

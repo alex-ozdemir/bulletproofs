@@ -4,6 +4,7 @@
 //!
 //! The relation extends R1CS to witnesses which are partially committed.
 use crate::{
+    timed,
     util::{hadamard, msm, CollectIter},
     Relation,
 };
@@ -40,16 +41,18 @@ impl<F: Field> ComR1csWitness<F> {
 }
 
 pub fn mat_vec_mult<F: Field>(mat: &Matrix<F>, vec: &[F]) -> Vec<F> {
-    // matrices are lists of rows
-    // rows are (value, idx) pairs
-    let mut result = vec![F::zero(); mat.len()];
-    for (r, mat_row) in mat.iter().enumerate() {
-        for (mat_val, c) in mat_row.iter() {
-            assert!(c < &vec.len());
-            result[r] += *mat_val * vec[*c];
+    timed!(|| "mat-vec-mult", {
+        // matrices are lists of rows
+        // rows are (value, idx) pairs
+        let mut result = vec![F::zero(); mat.len()];
+        for (r, mat_row) in mat.iter().enumerate() {
+            for (mat_val, c) in mat_row.iter() {
+                assert!(c < &vec.len());
+                result[r] += *mat_val * vec[*c];
+            }
         }
-    }
-    result
+        result
+    })
 }
 
 pub fn mat_cols<F: Field>(mat: &Matrix<F>) -> usize {
@@ -61,17 +64,19 @@ pub fn mat_cols<F: Field>(mat: &Matrix<F>) -> usize {
 }
 
 pub fn vec_mat_mult<F: Field>(vec: &[F], mat: &Matrix<F>, output_size: usize) -> Vec<F> {
-    // matrices are lists of rows
-    // rows are (value, idx) pairs
-    assert!(mat_cols(mat) <= output_size);
-    let mut result = vec![F::zero(); output_size];
-    assert_eq!(vec.len(), mat.len());
-    for (r, mat_row) in mat.iter().enumerate() {
-        for (mat_val, c) in mat_row.iter() {
-            result[*c] += *mat_val * vec[r];
+    timed!(|| "vec-mat-mult", {
+        // matrices are lists of rows
+        // rows are (value, idx) pairs
+        assert!(mat_cols(mat) <= output_size);
+        let mut result = vec![F::zero(); output_size];
+        assert_eq!(vec.len(), mat.len());
+        for (r, mat_row) in mat.iter().enumerate() {
+            for (mat_val, c) in mat_row.iter() {
+                result[*c] += *mat_val * vec[r];
+            }
         }
-    }
-    result
+        result
+    })
 }
 
 #[derive(Derivative)]
