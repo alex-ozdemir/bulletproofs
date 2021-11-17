@@ -69,6 +69,13 @@ pub struct UnrolledBpWitness<G: Group> {
 pub struct UnrollRelation<C: Pair>(pub PhantomData<C>);
 
 impl<C: Pair> Relation for UnrollRelation<C> {
+    /// (l, k, r)
+    ///
+    /// * l: The size of the inner IPA
+    /// * k: branch factor
+    /// * r: rounds of unrolling
+    ///
+    type Cfg = (usize, usize, usize);
     type Inst = UnrolledBpInstance<C>;
     type Wit = UnrolledBpWitness<C::G1>;
     fn check(instance: &Self::Inst, witness: &Self::Wit) {
@@ -102,6 +109,13 @@ impl<C: Pair> Relation for UnrollRelation<C> {
             let computed_commit = msm(&instance.commit_gens[i], &aff_coords);
             assert_eq!(computed_commit, instance.commits[i]);
         }
+    }
+    fn check_cfg(_size: &<Self as Relation>::Cfg, _x: &<Self as Relation>::Inst) {
+        // okay
+    }
+
+    fn size(x: &Self::Inst) -> Self::Cfg {
+        (x.gens.vec_size * x.k.pow(x.r as u32), x.k, x.r)
     }
 }
 

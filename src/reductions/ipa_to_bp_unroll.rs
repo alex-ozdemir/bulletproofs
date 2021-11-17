@@ -35,10 +35,12 @@ impl<C: Pair> IpaToBpUnroll<C> {
 impl<C: Pair> Reduction for IpaToBpUnroll<C> {
     type From = IpaRelation<C::G1>;
     type To = UnrollRelation<C>;
+    type Params = ();
     /// The commitments
     type Proof = Vec<C::G2>;
     fn prove(
         &self,
+        _pp: &Self::Params,
         x: &<Self::From as Relation>::Inst,
         w: &<Self::From as Relation>::Wit,
         fs: &mut FiatShamirRng,
@@ -55,6 +57,7 @@ impl<C: Pair> Reduction for IpaToBpUnroll<C> {
     }
     fn verify(
         &self,
+        _pp: &Self::Params,
         x: &<Self::From as Relation>::Inst,
         pf: &Self::Proof,
         fs: &mut FiatShamirRng,
@@ -67,6 +70,12 @@ impl<C: Pair> Reduction for IpaToBpUnroll<C> {
     }
     fn proof_size(p: &Self::Proof) -> usize {
         p.len()
+    }
+    fn setup<R: rand::Rng>(&self, _c: &<Self::From as Relation>::Cfg, _rng: &mut R) -> Self::Params {
+        ()
+    }
+    fn map_params(&self, c: &<Self::From as Relation>::Cfg) -> <Self::To as Relation>::Cfg {
+        ((*c - 1) / self.k.pow(self.r as u32) + 1, self.k, self.r)
     }
 }
 
@@ -279,9 +288,10 @@ mod test {
         let mut v_fs_rng = crate::FiatShamirRng::from_seed(&fs_seed);
         let (instance, witness) = IpaInstance::<C::G1>::sample_from_length(rng, init_size);
         let reducer = IpaToBpUnroll::<C>::new(k, r);
-        let (proof, u_instance, u_witness) = reducer.prove(&instance, &witness, &mut fs_rng);
+        let pp = reducer.setup(&init_size, rng);
+        let (proof, u_instance, u_witness) = reducer.prove(&pp, &instance, &witness, &mut fs_rng);
         UnrollRelation::check(&u_instance, &u_witness);
-        let verif_u_instance = reducer.verify(&instance, &proof, &mut v_fs_rng);
+        let verif_u_instance = reducer.verify(&pp, &instance, &proof, &mut v_fs_rng);
         assert_eq!(verif_u_instance, u_instance);
         UnrollRelation::check(&verif_u_instance, &u_witness);
     }

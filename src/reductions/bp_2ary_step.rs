@@ -8,9 +8,9 @@ use ark_ff::{Field, UniformRand};
 use derivative::Derivative;
 use std::marker::PhantomData;
 
+use ark_std::cfg_iter;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
-use ark_std::cfg_iter;
 
 #[derive(Derivative)]
 #[derivative(Default(bound = ""))]
@@ -19,9 +19,11 @@ pub struct Bp2aryStep<G: Group>(pub PhantomData<G>);
 impl<G: Group> Reduction for Bp2aryStep<G> {
     type From = IpaRelation<G>;
     type To = IpaRelation<G>;
+    type Params = ();
     type Proof = (G, G);
     fn prove(
         &self,
+        _pp: &Self::Params,
         instance: &<Self::From as Relation>::Inst,
         witness: &<Self::From as Relation>::Wit,
         fs: &mut FiatShamirRng,
@@ -85,6 +87,7 @@ impl<G: Group> Reduction for Bp2aryStep<G> {
     }
     fn verify(
         &self,
+        _pp: &Self::Params,
         instance: &<Self::From as Relation>::Inst,
         (ref l, ref r): &Self::Proof,
         fs: &mut FiatShamirRng,
@@ -122,6 +125,19 @@ impl<G: Group> Reduction for Bp2aryStep<G> {
     }
     fn proof_size(_p: &Self::Proof) -> usize {
         2
+    }
+    fn setup<R: rand::Rng>(
+        &self,
+        _: &<IpaRelation<G> as Relation>::Cfg,
+        _: &mut R,
+    ) -> Self::Params {
+        ()
+    }
+    fn map_params(
+        &self,
+        c: &<IpaRelation<G> as Relation>::Cfg,
+    ) -> <IpaRelation<G> as Relation>::Cfg {
+        (*c - 1) / 2 + 1
     }
 }
 

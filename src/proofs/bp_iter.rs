@@ -2,7 +2,7 @@ use crate::{
     relations::ipa::{IpaInstance, IpaRelation, IpaWitness},
     timed,
     util::{ip, msm, zero_pad_to_two_power},
-    FiatShamirRng, Proof,
+    FiatShamirRng, Proof, Relation,
 };
 use ark_ec::group::Group;
 use ark_ff::{Field, One, UniformRand};
@@ -43,10 +43,12 @@ impl<G: Group> Bp<G> {
 }
 
 impl<G: Group> Proof<IpaRelation<G>> for Bp<G> {
+    type Params = ();
     type Proof = BpProof<G>;
 
     fn prove(
         &self,
+        _pp: &Self::Params,
         instance: &IpaInstance<G>,
         witness: &IpaWitness<G::ScalarField>,
         fs: &mut FiatShamirRng,
@@ -125,7 +127,9 @@ impl<G: Group> Proof<IpaRelation<G>> for Bp<G> {
         }
     }
 
-    fn verify(&self, instance: &IpaInstance<G>, proof: &Self::Proof, fs: &mut FiatShamirRng) {
+    fn verify(&self,
+        _pp: &Self::Params,
+        instance: &IpaInstance<G>, proof: &Self::Proof, fs: &mut FiatShamirRng) {
         let timer = start_timer!(|| "verifying BP");
         let a_gen = zero_pad_to_two_power(&instance.gens.a_gens);
         let b_gen = zero_pad_to_two_power(&instance.gens.b_gens);
@@ -158,6 +162,10 @@ impl<G: Group> Proof<IpaRelation<G>> for Bp<G> {
         assert_eq!(instance.result, msm(&final_msm_points, &final_msm_scalars));
         end_timer!(timer);
     }
+    fn setup<Rn: rand::Rng>(&self, _: &<IpaRelation<G> as Relation>::Cfg, _: &mut Rn) -> Self::Params {
+        ()
+    }
+
     fn proof_size(p: &Self::Proof) -> usize {
         2 * (1 + p.ls.len())
     }

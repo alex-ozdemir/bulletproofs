@@ -1,4 +1,7 @@
-use crate::{util::{msm, zero_pad_to_two_power}, Relation};
+use crate::{
+    util::{msm, zero_pad_to_two_power},
+    Relation,
+};
 use ark_ec::group::Group;
 use ark_ff::Field;
 use rand::Rng;
@@ -58,7 +61,7 @@ impl<G: Group> IpaGens<G> {
                 .zip(&b_gen[n..])
                 .map(|(l, r)| l.mul(&x) + r.mul(&x_inv))
                 .collect();
-                c_i += 1;
+            c_i += 1;
             a_gen = a_gen_next;
             b_gen = b_gen_next;
         }
@@ -124,6 +127,8 @@ impl<F: Field> IpaWitness<F> {
 pub struct IpaRelation<G: Group>(pub PhantomData<G>);
 
 impl<G: Group> Relation for IpaRelation<G> {
+    /// Vector size
+    type Cfg = usize;
     type Inst = IpaInstance<G>;
     type Wit = IpaWitness<G::ScalarField>;
     fn check(instance: &Self::Inst, witness: &Self::Wit) {
@@ -138,5 +143,18 @@ impl<G: Group> Relation for IpaRelation<G> {
                 + instance.gens.ip_gen.mul(&ip),
             instance.result
         );
+    }
+
+    fn check_cfg(size: &Self::Cfg, x: &Self::Inst) {
+        assert!(
+            x.gens.vec_size <= *size,
+            "size: {}\nsupported: {}",
+            x.gens.vec_size,
+            size
+        );
+    }
+
+    fn size(x: &Self::Inst) -> Self::Cfg {
+        x.gens.vec_size
     }
 }

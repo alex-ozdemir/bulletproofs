@@ -1,7 +1,7 @@
 use crate::{
     relations::ipa::{IpaGens, IpaInstance, IpaRelation, IpaWitness},
     util::{ip, msm, powers, scale_vec, sum_vecs, zero_pad_to_multiple},
-    FiatShamirRng, Proof,
+    FiatShamirRng, Proof, Relation,
 };
 use ark_ec::group::Group;
 use ark_ff::{Field, One, UniformRand};
@@ -193,20 +193,22 @@ pub fn verify_step<G: Group>(
 }
 
 impl<G: Group, B: Proof<IpaRelation<G>>> Proof<IpaRelation<G>> for KaryBp<G, B> {
+    type Params = B::Params;
     type Proof = BpProof<G, B>;
 
     fn prove(
         &self,
+        pp: &Self::Params,
         instance: &IpaInstance<G>,
         witness: &IpaWitness<G::ScalarField>,
         fs: &mut FiatShamirRng,
     ) -> Self::Proof {
         if instance.gens.vec_size == 1 {
-            BpProof::Base(self.base.prove(instance, witness, fs))
+            BpProof::Base(self.base.prove(pp, instance, witness, fs))
         } else {
             let (instance_next, wit_next, pos_cross, neg_cross) =
                 prove_step(self.k, instance, witness, fs);
-            let rec = self.prove(&instance_next, &wit_next, fs);
+            let rec = self.prove(pp, &instance_next, &wit_next, fs);
             BpProof::Rec {
                 pos_cross,
                 neg_cross,
@@ -215,24 +217,30 @@ impl<G: Group, B: Proof<IpaRelation<G>>> Proof<IpaRelation<G>> for KaryBp<G, B> 
         }
     }
 
-    fn verify(&self, instance: &IpaInstance<G>, proof: &Self::Proof, fs: &mut FiatShamirRng) {
+    fn verify(&self,
+        pp: &Self::Params,
+        instance: &IpaInstance<G>, proof: &Self::Proof, fs: &mut FiatShamirRng) {
         match proof {
-            BpProof::Base(base_proof) => self.base.verify(instance, base_proof, fs),
+            BpProof::Base(base_proof) => self.base.verify(pp, instance, base_proof, fs),
             BpProof::Rec {
                 pos_cross,
                 neg_cross,
                 rec,
             } => {
                 let instance_next = verify_step(self.k, instance, pos_cross, neg_cross, fs);
-                self.verify(&instance_next, rec, fs)
+                self.verify(pp, &instance_next, rec, fs)
             }
         }
     }
     fn proof_size(p: &Self::Proof) -> usize {
         match p {
-            BpProof::Rec{pos_cross, rec, ..} => 2 * pos_cross.len() + Self::proof_size(rec),
+            BpProof::Rec { pos_cross, rec, .. } => 2 * pos_cross.len() + Self::proof_size(rec),
             BpProof::Base(b) => B::proof_size(b),
         }
+    }
+
+    fn setup<Rn: rand::Rng>(&self, _: &<IpaRelation<G> as Relation>::Cfg, rng: &mut Rn) -> Self::Params {
+        self.base.setup(&self.k, rng)
     }
 }
 

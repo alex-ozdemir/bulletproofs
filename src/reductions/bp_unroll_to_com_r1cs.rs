@@ -24,10 +24,12 @@ pub struct UnrollToComR1cs<C>(pub PhantomData<C>);
 impl<C: Pair> Reduction for UnrollToComR1cs<C> {
     type From = UnrollRelation<C>;
     type To = ComR1csRelation<C::G2>;
+    type Params = ();
     type Proof = ();
 
     fn prove(
         &self,
+        _pp: &Self::Params,
         x: &<Self::From as Relation>::Inst,
         w: &<Self::From as Relation>::Wit,
         fs: &mut FiatShamirRng,
@@ -88,6 +90,7 @@ impl<C: Pair> Reduction for UnrollToComR1cs<C> {
     }
     fn verify(
         &self,
+        _pp: &Self::Params,
         x: &<Self::From as Relation>::Inst,
         _pf: &Self::Proof,
         fs: &mut FiatShamirRng,
@@ -119,6 +122,21 @@ impl<C: Pair> Reduction for UnrollToComR1cs<C> {
     fn proof_size(_p: &Self::Proof) -> usize {
         0
     }
+    fn setup<R: rand::Rng>(&self, _: &<Self::From as Relation>::Cfg, _: &mut R) -> Self::Params {
+        ()
+    }
+    fn map_params(&self, (m, k, r): &<Self::From as Relation>::Cfg) -> <Self::To as Relation>::Cfg {
+        // FS-MSM size
+        let l = 2 * (k - 1) * r + 1;
+        let l: f64 = l as f64;
+        let m: f64 = *m as f64;
+        let l_log2l: f64 = l / l.log2();
+        // From our cost modeling. See analysis/cost.py
+        let cs_expected: f64 = 1765.4 + 1288.0 * l_log2l + 1801.0 * m;
+        // Add some buffer
+        let cs = (cs_expected * 1.25 + 1000.0) as usize;
+        (cs, cs)
+    }
 }
 
 #[cfg(test)]
@@ -144,15 +162,16 @@ mod test {
         let mut v_fs_rng = crate::FiatShamirRng::from_seed(&fs_seed);
         let (instance, witness) = IpaInstance::<C::G1>::sample_from_length(rng, init_size);
         let reducer = IpaToBpUnroll::<C>::new(k, r);
-        let (proof, u_instance, u_witness) = reducer.prove(&instance, &witness, &mut fs_rng);
+        let pp = reducer.setup(&init_size, rng);
+        let (proof, u_instance, u_witness) = reducer.prove(&pp, &instance, &witness, &mut fs_rng);
         UnrollRelation::check(&u_instance, &u_witness);
-        let verif_u_instance = reducer.verify(&instance, &proof, &mut v_fs_rng);
+        let verif_u_instance = reducer.verify(&pp, &instance, &proof, &mut v_fs_rng);
         assert_eq!(verif_u_instance, u_instance);
         UnrollRelation::check(&verif_u_instance, &u_witness);
         let reducer2 = UnrollToComR1cs::<C>::default();
-        let ((), r_instance, r_witness) = reducer2.prove(&u_instance, &u_witness, &mut fs_rng);
+        let ((), r_instance, r_witness) = reducer2.prove(&(), &u_instance, &u_witness, &mut fs_rng);
         ComR1csRelation::check(&r_instance, &r_witness);
-        let v_r_instance = reducer2.verify(&u_instance, &(), &mut v_fs_rng);
+        let v_r_instance = reducer2.verify(&(), &u_instance, &(), &mut v_fs_rng);
         ComR1csRelation::check(&v_r_instance, &r_witness);
     }
 

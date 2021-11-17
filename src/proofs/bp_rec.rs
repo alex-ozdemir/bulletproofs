@@ -1,7 +1,7 @@
 use crate::{
     relations::ipa::{IpaGens, IpaInstance, IpaRelation, IpaWitness},
     util::{ip, msm},
-    FiatShamirRng, Proof,
+    FiatShamirRng, Proof, Relation,
 };
 use ark_ec::group::Group;
 use ark_ff::{Field, UniformRand};
@@ -16,16 +16,18 @@ impl<G, B> Bp<G, B> {
 }
 
 impl<G: Group, B: Proof<IpaRelation<G>>> Proof<IpaRelation<G>> for Bp<G, B> {
+    type Params = B::Params;
     type Proof = BpProof<G, B>;
 
     fn prove(
         &self,
+        pp: &Self::Params,
         instance: &IpaInstance<G>,
         witness: &IpaWitness<G::ScalarField>,
         fs: &mut FiatShamirRng,
     ) -> Self::Proof {
         if instance.gens.vec_size == 1 {
-            BpProof::Base(self.1.prove(instance, witness, fs))
+            BpProof::Base(self.1.prove(pp, instance, witness, fs))
         } else {
             let a = witness.a.clone();
             let b = witness.b.clone();
@@ -86,14 +88,14 @@ impl<G: Group, B: Proof<IpaRelation<G>>> Proof<IpaRelation<G>> for Bp<G, B> {
                 },
                 result: p_next,
             };
-            let rec_proof = self.prove(&instance_next, &wit_next, fs);
+            let rec_proof = self.prove(pp, &instance_next, &wit_next, fs);
             BpProof::Rec(l, r, Box::new(rec_proof))
         }
     }
 
-    fn verify(&self, instance: &IpaInstance<G>, proof: &Self::Proof, fs: &mut FiatShamirRng) {
+    fn verify(&self, pp: &Self::Params, instance: &IpaInstance<G>, proof: &Self::Proof, fs: &mut FiatShamirRng) {
         match proof {
-            BpProof::Base(base_proof) => self.1.verify(instance, base_proof, fs),
+            BpProof::Base(base_proof) => self.1.verify(pp, instance, base_proof, fs),
             BpProof::Rec(l, r, inner_proof) => {
                 fs.absorb(l);
                 fs.absorb(r);
@@ -123,10 +125,14 @@ impl<G: Group, B: Proof<IpaRelation<G>>> Proof<IpaRelation<G>> for Bp<G, B> {
                     },
                     result: p_next,
                 };
-                self.verify(&instance_next, inner_proof, fs)
+                self.verify(pp, &instance_next, inner_proof, fs)
             }
         }
     }
+    fn setup<Rn: rand::Rng>(&self, _: &<IpaRelation<G> as Relation>::Cfg, rng: &mut Rn) -> Self::Params {
+        self.1.setup(&2, rng)
+    }
+
     fn proof_size(p: &Self::Proof) -> usize {
         match p {
             BpProof::Rec(_, _, r) => 2 + Self::proof_size(r),

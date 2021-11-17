@@ -79,6 +79,8 @@ pub fn vec_mat_mult<F: Field>(vec: &[F], mat: &Matrix<F>, output_size: usize) ->
 pub struct ComR1csRelation<G: Group>(pub PhantomData<G>);
 
 impl<G: Group> Relation for ComR1csRelation<G> {
+    /// (n_vars, n_constraints)
+    type Cfg = (usize, usize);
     type Inst = ComR1csInstance<G>;
     type Wit = ComR1csWitness<G::ScalarField>;
     fn check(x: &Self::Inst, w: &Self::Wit) {
@@ -115,5 +117,14 @@ impl<G: Group> Relation for ComR1csRelation<G> {
             // S_i = z_i * T_i
             assert_eq!(x.ss[i], msm(&x.ts[i], &w.zs[i]));
         }
+    }
+
+    fn check_cfg((n_vars, n_cs): &Self::Cfg, x: &Self::Inst) {
+        assert!(x.n <= *n_vars, "vars:{}\nsupported:{}", x.n, n_vars);
+        assert!(x.m <= *n_cs, "constraints:{}\nsupported:{}", x.n, n_cs);
+    }
+
+    fn size(x: &Self::Inst) -> Self::Cfg {
+        (x.m, x.n)
     }
 }

@@ -404,7 +404,8 @@ mod test {
         let mut fs_rng = crate::FiatShamirRng::from_seed(&fs_seed);
         let (instance, witness) = IpaInstance::<C::G1>::sample_from_length(rng, init_size);
         let reducer = IpaToBpUnroll::<C>::new(k, r);
-        let (_proof, u_instance, u_witness) = reducer.prove(&instance, &witness, &mut fs_rng);
+        let pp = reducer.setup(&init_size, rng);
+        let (_proof, u_instance, u_witness) = reducer.prove(&pp, &instance, &witness, &mut fs_rng);
         let rec_relation = BpRecCircuit::from_unrolled_bp_witness(u_instance, u_witness, rng);
         println!(
             "R1CS FB-MSM size: {}, IP & commit size: {}",

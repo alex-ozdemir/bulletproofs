@@ -21,7 +21,7 @@ use std::time::Instant;
 #[macro_export]
 macro_rules! timed {
     ($label:expr, $val:expr) => {{
-        use ::ark_std::{start_timer, end_timer};
+        use ::ark_std::{end_timer, start_timer};
         let timer = start_timer!($label);
         let val = $val;
         end_timer!(timer);
@@ -29,10 +29,15 @@ macro_rules! timed {
     }};
 }
 
+/// A witness relation, with setup.
 pub trait Relation {
+    /// Configuration for the reduction.
+    type Cfg;
     type Inst;
     type Wit;
     fn check(x: &Self::Inst, w: &Self::Wit);
+    fn check_cfg(c: &Self::Cfg, x: &Self::Inst);
+    fn size(x: &Self::Inst) -> Self::Cfg;
 }
 
 pub trait SampleableRelation: Relation {
@@ -40,12 +45,16 @@ pub trait SampleableRelation: Relation {
     fn sample<R: Rng>(p: &Self::Params, rng: &mut R) -> Self;
 }
 
+/// A reduction between relations
 pub trait Reduction {
+    /// Public parameters. Create by Setup, used by other algorithms.
     type From: Relation;
     type To: Relation;
+    type Params;
     type Proof;
     fn prove(
         &self,
+        pp: &Self::Params,
         x: &<Self::From as Relation>::Inst,
         w: &<Self::From as Relation>::Wit,
         fs: &mut FiatShamirRng,
@@ -56,23 +65,38 @@ pub trait Reduction {
     );
     fn verify(
         &self,
+        pp: &Self::Params,
         x: &<Self::From as Relation>::Inst,
         pf: &Self::Proof,
         fs: &mut FiatShamirRng,
     ) -> <Self::To as Relation>::Inst;
     /// Return the number of field or group elements in a seralized proof.
     fn proof_size(p: &Self::Proof) -> usize;
+    /// Setup public parameters for this relation configuration
+    fn setup<R: Rng>(&self, c: &<Self::From as Relation>::Cfg, rng: &mut R) -> Self::Params;
+    /// Map relation cfg
+    fn map_params(&self, c: &<Self::From as Relation>::Cfg) -> <Self::To as Relation>::Cfg;
 }
 
 pub trait Proof<R: Relation> {
+    type Params;
     type Proof;
     fn prove(
         &self,
+        pp: &Self::Params,
         x: &<R as Relation>::Inst,
         w: &<R as Relation>::Wit,
         fs: &mut FiatShamirRng,
     ) -> Self::Proof;
-    fn verify(&self, x: &<R as Relation>::Inst, pf: &Self::Proof, fs: &mut FiatShamirRng);
+    fn verify(
+        &self,
+        pp: &Self::Params,
+        x: &<R as Relation>::Inst,
+        pf: &Self::Proof,
+        fs: &mut FiatShamirRng,
+    );
+    /// Setup public parameters for this relation configuration
+    fn setup<Rn: Rng>(&self, c: &R::Cfg, rng: &mut Rn) -> Self::Params;
     fn proof_size(p: &Self::Proof) -> usize;
 }
 
@@ -88,18 +112,19 @@ pub fn test_ipa<G: Group, I: Proof<IpaRelation<G>>>(sizes: Vec<usize>, reps: usi
     for size in sizes {
         for _ in 0..reps {
             let (instance, witness) = IpaInstance::<G>::sample_from_length(rng, size);
+            let pp = i.setup(&size, rng);
             IpaRelation::check(&instance, &witness);
             let fs_seed: [u8; 32] = rng.gen();
             let mut fs_rng = FiatShamirRng::from_seed(&fs_seed);
             let pf_start = Instant::now();
-            let proof = timed!(|| "proving", i.prove(&instance, &witness, &mut fs_rng));
+            let proof = timed!(|| "proving", i.prove(&pp, &instance, &witness, &mut fs_rng));
             let pf_end = Instant::now();
             debug!(target: "pf_time", "Proof time (s): {}", (pf_end-pf_start).as_secs_f64());
             let proof_size = I::proof_size(&proof);
             debug!(target: "pf_size", "Proof size: {}", proof_size);
             let mut fs_rng = FiatShamirRng::from_seed(&fs_seed);
             let ver_start = Instant::now();
-            timed!(|| "verifying", i.verify(&instance, &proof, &mut fs_rng));
+            timed!(|| "verifying", i.verify(&pp, &instance, &proof, &mut fs_rng));
             let ver_end = Instant::now();
             debug!(target: "ver_time", "Verifier time (s): {}", (ver_end-ver_start).as_secs_f64());
         }
@@ -115,10 +140,11 @@ pub fn test_ipa<G: Group, I: Proof<IpaRelation<G>>>(sizes: Vec<usize>, reps: usi
 pub fn ipa_size<G: Group, I: Proof<IpaRelation<G>>>(size: usize, i: I) -> usize {
     let rng = &mut ark_std::test_rng();
     let (instance, witness) = IpaInstance::<G>::sample_from_length(rng, size);
+    let pp = i.setup(&size, rng);
     IpaRelation::check(&instance, &witness);
     let fs_seed: [u8; 32] = rng.gen();
     let mut fs_rng = FiatShamirRng::from_seed(&fs_seed);
-    let proof = i.prove(&instance, &witness, &mut fs_rng);
+    let proof = i.prove(&pp, &instance, &witness, &mut fs_rng);
     I::proof_size(&proof)
 }
 
@@ -134,10 +160,11 @@ pub fn constraints<C: Pair>(size: usize, k: usize, r: usize) -> usize {
     );
     let rng = &mut ark_std::test_rng();
     let (instance, witness) = IpaInstance::<C::G1>::sample_from_length(rng, size);
+    let pp = reduction.setup(&size, rng);
     //IpaRelation::check(&instance, &witness);
     let fs_seed: [u8; 32] = rng.gen();
     let mut fs_rng = FiatShamirRng::from_seed(&fs_seed);
-    let (_proof, x, _w) = reduction.prove(&instance, &witness, &mut fs_rng);
+    let (_proof, x, _w) = reduction.prove(&pp, &instance, &witness, &mut fs_rng);
     x.n
 }
 
@@ -187,11 +214,14 @@ pub mod test {
         x: <R::From as Relation>::Inst,
         w: <R::From as Relation>::Wit,
     ) {
+        let c = <R::From as Relation>::size(&x);
         let p_fs_rng = &mut test_fs_rng();
         let v_fs_rng = &mut test_fs_rng();
-        let (pf, p_x_2, p_w_2) = r.prove(&x, &w, p_fs_rng);
+        let s_fs_rng = &mut test_fs_rng();
+        let pp = r.setup(&c, s_fs_rng);
+        let (pf, p_x_2, p_w_2) = r.prove(&pp, &x, &w, p_fs_rng);
         <R::To as Relation>::check(&p_x_2, &p_w_2);
-        let v_x_2 = r.verify(&x, &pf, v_fs_rng);
+        let v_x_2 = r.verify(&pp, &x, &pf, v_fs_rng);
         <R::To as Relation>::check(&v_x_2, &p_w_2);
     }
 
@@ -208,10 +238,13 @@ pub mod test {
     ) where
         <R as Relation>::Inst: std::fmt::Debug + Eq,
     {
+        let c = R::size(&x);
         let p_fs_rng = &mut test_fs_rng();
         let v_fs_rng = &mut test_fs_rng();
-        let pf = sys.prove(&x, &w, p_fs_rng);
-        sys.verify(&x, &pf, v_fs_rng);
+        let s_fs_rng = &mut test_fs_rng();
+        let pp = sys.setup(&c, s_fs_rng);
+        let pf = sys.prove(&pp, &x, &w, p_fs_rng);
+        sys.verify(&pp, &x, &pf, v_fs_rng);
     }
 
     #[test]
@@ -253,13 +286,14 @@ pub mod test {
         pub fn bench_ipa<G: Group, I: Proof<IpaRelation<G>>>(size: usize, i: I, b: &mut Bencher) {
             let rng = &mut ark_std::test_rng();
             let (instance, witness) = IpaInstance::<G>::sample_from_length(rng, size);
+            let pp = i.setup(&size, rng);
             IpaRelation::check(&instance, &witness);
             let fs_seed: [u8; 32] = rng.gen();
             b.iter(|| {
                 let mut fs_rng = FiatShamirRng::from_seed(&fs_seed);
-                let proof = i.prove(&instance, &witness, &mut fs_rng);
+                let proof = i.prove(&pp, &instance, &witness, &mut fs_rng);
                 let mut fs_rng = FiatShamirRng::from_seed(&fs_seed);
-                i.verify(&instance, &proof, &mut fs_rng);
+                i.verify(&pp, &instance, &proof, &mut fs_rng);
             })
         }
     }

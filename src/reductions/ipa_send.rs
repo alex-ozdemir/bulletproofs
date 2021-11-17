@@ -14,9 +14,11 @@ pub struct SendIpa<G: Group>(pub PhantomData<G>);
 impl<G: Group> Reduction for SendIpa<G> {
     type From = IpaRelation<G>;
     type To = True;
+    type Params = ();
     type Proof = (G::ScalarField, G::ScalarField);
     fn prove(
         &self,
+        _pp: &Self::Params,
         _instance: &<Self::From as Relation>::Inst,
         witness: &<Self::From as Relation>::Wit,
         _fs: &mut FiatShamirRng,
@@ -32,6 +34,7 @@ impl<G: Group> Reduction for SendIpa<G> {
     }
     fn verify(
         &self,
+        _pp: &Self::Params,
         instance: &<Self::From as Relation>::Inst,
         (ref a, ref b): &Self::Proof,
         _fs: &mut FiatShamirRng,
@@ -45,6 +48,12 @@ impl<G: Group> Reduction for SendIpa<G> {
     }
     fn proof_size(_p: &Self::Proof) -> usize {
         2
+    }
+    fn setup<R: rand::Rng>(&self, _: &<IpaRelation<G> as Relation>::Cfg, _: &mut R) -> Self::Params {
+        ()
+    }
+    fn map_params(&self, _: &<IpaRelation<G> as Relation>::Cfg) -> () {
+        ()
     }
 }
 
